@@ -1,2 +1,2 @@
-import BusinessConsole from '@/components/business-console'
-export default function OrdersPage(){return <BusinessConsole module="orders"/>}
+import OperationsConsole from '@/components/operations-console'
+export default function OrdersPage(){return <OperationsConsole module="orders"/>}
