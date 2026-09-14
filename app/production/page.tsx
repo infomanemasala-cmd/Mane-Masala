@@ -1,2 +1,3 @@
 import OperationsConsole from '@/components/operations-console'
-export default function ProductionPage(){return <OperationsConsole module="production"/>}
+import RecipeProductionCreate from '@/components/recipe-production-create'
+export default function ProductionPage(){return <><RecipeProductionCreate/><OperationsConsole module="production"/></>}
