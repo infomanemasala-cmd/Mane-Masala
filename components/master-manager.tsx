@@ -6,6 +6,7 @@ import DataTable from '@/components/data-table'
 
 type Row = Record<string, unknown>
 type MasterTable = 'items' | 'suppliers' | 'customers' | 'units' | 'categories' | 'sub_agents'
+type SelectOption = { value: string; label: string }
 const supplierTypes = [['wholesaler', 'Wholesaler'], ['retailer', 'Retailer'], ['individual', 'Individual / Person'], ['farmer_producer', 'Farmer / Producer'], ['online_marketplace', 'Online marketplace'], ['manufacturer', 'Manufacturer'], ['other', 'Other']]
 const customerTypes = [['individual', 'Individual'], ['retail_shop', 'Retail shop'], ['restaurant', 'Restaurant'], ['caterer', 'Caterer'], ['online_customer', 'Online customer'], ['sub_agent', 'Sub-agent']]
 const titles: Record<MasterTable, string> = { items: 'Item', suppliers: 'Supplier', customers: 'Customer', units: 'Unit', categories: 'Category', sub_agents: 'Sub-agent' }
@@ -14,11 +15,33 @@ function Field({ label, children, required = false }: { label: string; children:
 function SubmitButton({ busy, children }: { busy: boolean; children: React.ReactNode }) { return <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving…' : children}</button> }
 function slugify(value: string) { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') }
 
+function CreateableSelect({ name, initialValue = '', options, placeholder, createLabel, onCreate }: { name: string; initialValue?: string; options: SelectOption[]; placeholder: string; createLabel: string; onCreate: (name: string) => Promise<SelectOption | null> }) {
+  const [open, setOpen] = useState(false), [dialogOpen, setDialogOpen] = useState(false), [draft, setDraft] = useState(''), [selected, setSelected] = useState(initialValue), [creating, setCreating] = useState(false)
+  const selectedOption = options.find((option) => option.value === selected)
+
+  const create = async () => {
+    const nameValue = draft.trim(); if (!nameValue) return
+    setCreating(true)
+    const option = await onCreate(nameValue)
+    if (option) { setSelected(option.value); setDraft(''); setDialogOpen(false); setOpen(false) }
+    setCreating(false)
+  }
+
+  return <div className="createable-select">
+    <input type="hidden" name={name} value={selected} />
+    <button className="select-trigger" type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{selectedOption?.label ?? placeholder}<span aria-hidden="true">▾</span></button>
+    {open && <div className="select-menu" role="listbox">
+      {options.map((option) => <button className={`select-option${selected === option.value ? ' select-option-selected' : ''}`} key={option.value} type="button" role="option" aria-selected={selected === option.value} onClick={() => { setSelected(option.value); setOpen(false) }}>{option.label}</button>)}
+      <div className="select-menu-divider" />
+      <button className="select-create-action" type="button" onClick={() => { setDialogOpen(true); setDraft('') }}>{createLabel}</button>
+    </div>}
+    {dialogOpen && <div className="nested-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !creating) setDialogOpen(false) }}><div className="nested-modal-card" role="dialog" aria-modal="true" aria-label={createLabel.replace('+ Create new ', 'Create ')}><div className="modal-header"><h4>{createLabel.replace('+ Create new ', 'Create ')}</h4><button className="secondary-button" type="button" onClick={() => setDialogOpen(false)} disabled={creating}>Close</button></div><Field label="Name" required><input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void create() } }} placeholder="Enter name" /></Field><div className="nested-modal-actions"><button className="secondary-button" type="button" onClick={() => setDialogOpen(false)} disabled={creating}>Cancel</button><button className="primary-button" type="button" onClick={() => void create()} disabled={creating || !draft.trim()}>{creating ? 'Creating…' : 'Create'}</button></div></div></div>}
+  </div>
+}
+
 function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => void }) {
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('')
   const [units, setUnits] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [customers, setCustomers] = useState<Row[]>([]), [itemTypes, setItemTypes] = useState<Row[]>([])
-  const [newCategory, setNewCategory] = useState(false), [newCategoryName, setNewCategoryName] = useState(''), [categoryBusy, setCategoryBusy] = useState(false)
-  const [newItemType, setNewItemType] = useState(false), [newItemTypeName, setNewItemTypeName] = useState(''), [itemTypeBusy, setItemTypeBusy] = useState(false)
   const [trackExpiry, setTrackExpiry] = useState(false)
 
   const loadLists = async () => {
@@ -35,29 +58,26 @@ function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => voi
   }
   useEffect(() => { void loadLists() }, [table])
 
-  const createCategory = async () => {
-    const name = newCategoryName.trim(); if (!name) return
-    setCategoryBusy(true); setError('')
-    const sb = createClient(); const { data, error: insertError } = await sb.from('categories').insert({ name }).select('id,name,code').single()
-    if (insertError) setError(insertError.message)
-    else { setCategories((rows) => [...rows, data as Row].sort((a, b) => String(a.name).localeCompare(String(b.name)))); const select = document.querySelector<HTMLSelectElement>('select[name="category_id"]'); if (select && data) select.value = String((data as Row).id); setNewCategory(false); setNewCategoryName('') }
-    setCategoryBusy(false)
+  const createCategory = async (name: string): Promise<SelectOption | null> => {
+    setError(''); const sb = createClient(); const { data, error: insertError } = await sb.from('categories').insert({ name }).select('id,name,code').single()
+    if (insertError) { setError(insertError.message); return null }
+    setCategories((rows) => [...rows, data as Row].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+    setMessage(`New category created: ${String((data as Row).code)}`)
+    return { value: String((data as Row).id), label: `${String((data as Row).code)} — ${String((data as Row).name)}` }
   }
 
-  const createItemType = async () => {
-    const name = newItemTypeName.trim(); if (!name) return
-    setItemTypeBusy(true); setError('')
-    const base = slugify(name); const sb = createClient();
-    let code = base || 'custom_type'; let suffix = 1
+  const createItemType = async (name: string): Promise<SelectOption | null> => {
+    setError(''); const base = slugify(name); const sb = createClient(); let code = base || 'custom_type'; let suffix = 1
     while (true) {
       const { data: existing } = await sb.from('item_types').select('id').eq('code', code).maybeSingle()
       if (!existing) break
       suffix += 1; code = `${base}_${suffix}`
     }
     const { data, error: insertError } = await sb.from('item_types').insert({ name, code }).select('id,name,code').single()
-    if (insertError) setError(insertError.message)
-    else { setItemTypes((rows) => [...rows, data as Row].sort((a, b) => String(a.name).localeCompare(String(b.name)))); const select = document.querySelector<HTMLSelectElement>('select[name="item_type"]'); if (select && data) select.value = String((data as Row).code); setNewItemType(false); setNewItemTypeName(''); setMessage(`New item type created: ${String((data as Row).code)}`) }
-    setItemTypeBusy(false)
+    if (insertError) { setError(insertError.message); return null }
+    setItemTypes((rows) => [...rows, data as Row].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+    setMessage(`New item type created: ${String((data as Row).code)}`)
+    return { value: String((data as Row).code), label: String((data as Row).name) }
   }
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -87,10 +107,8 @@ function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => voi
     {table === 'sub_agents' && <><Field label="Existing sub-agent customer" required><select name="customer_id" required><option value="">Select customer</option>{customers.map((customer) => <option key={String(customer.id)} value={String(customer.id)}>{String(customer.name)}</option>)}</select></Field><Field label="Sub-agent name" required><input name="name" required /></Field><Field label="Phone"><input name="phone" /></Field><Field label="WhatsApp"><input name="whatsapp" /></Field><Field label="Address"><input name="address" /></Field><Field label="Notes"><input name="notes" /></Field></>}
     {table === 'items' && <>
       <Field label="Item name" required><input name="name" required placeholder="Peanut Butter" /></Field>
-      <Field label="Item type" required><select name="item_type" defaultValue="finished_product"><option value="">Select item type</option>{itemTypes.map((type) => <option key={String(type.id)} value={String(type.code)}>{String(type.name)}</option>)}</select></Field>
-      {newItemType ? <div className="inline-create"><input value={newItemTypeName} onChange={(e) => setNewItemTypeName(e.target.value)} placeholder="New item type name" /><button className="secondary-button" type="button" onClick={() => void createItemType()} disabled={itemTypeBusy}>{itemTypeBusy ? 'Creating…' : 'Create type'}</button><button className="secondary-button" type="button" onClick={() => setNewItemType(false)}>Cancel</button></div> : <button className="inline-link-button" type="button" onClick={() => setNewItemType(true)}>+ Create new item type</button>}
-      <Field label="Category"><select name="category_id" defaultValue=""><option value="">No category</option>{categories.map((category) => <option key={String(category.id)} value={String(category.id)}>{String(category.code)} — {String(category.name)}</option>)}</select></Field>
-      {newCategory ? <div className="inline-create"><input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="New category name" /><button className="secondary-button" type="button" onClick={() => void createCategory()} disabled={categoryBusy}>{categoryBusy ? 'Creating…' : 'Create category'}</button><button className="secondary-button" type="button" onClick={() => setNewCategory(false)}>Cancel</button></div> : <button className="inline-link-button" type="button" onClick={() => setNewCategory(true)}>+ Create new category</button>}
+      <Field label="Item type" required><CreateableSelect name="item_type" initialValue="finished_product" options={itemTypes.map((type) => ({ value: String(type.code), label: String(type.name) }))} placeholder="Select item type" createLabel="+ Create new item type" onCreate={createItemType} /></Field>
+      <Field label="Category"><CreateableSelect name="category_id" options={categories.map((category) => ({ value: String(category.id), label: `${String(category.code)} — ${String(category.name)}` }))} placeholder="No category" createLabel="+ Create new category" onCreate={createCategory} /></Field>
       <Field label="Base / purchase unit" required><select name="base_unit_id" required defaultValue=""><option value="">Select unit</option>{units.map((unit) => <option key={String(unit.id)} value={String(unit.id)}>{String(unit.name)} ({String(unit.symbol)})</option>)}</select></Field>
       <Field label="Selling unit"><select name="selling_unit_id" defaultValue=""><option value="">Same as base / not applicable</option>{units.map((unit) => <option key={String(unit.id)} value={String(unit.id)}>{String(unit.name)} ({String(unit.symbol)})</option>)}</select></Field>
       <Field label="Minimum stock"><input name="minimum_stock" type="number" min="0" step="0.001" defaultValue="0" /></Field>
