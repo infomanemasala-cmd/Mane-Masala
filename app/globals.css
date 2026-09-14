@@ -8,208 +8,45 @@
   --accent-soft: #e9f0eb;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-}
-
-body {
-  background: var(--background);
-  color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-.app-shell {
-  display: flex;
-  min-height: 100vh;
-}
-
-.sidebar {
-  width: 260px;
-  flex: 0 0 260px;
-  padding: 24px 16px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 8px 28px;
-}
-
-.brand-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--accent);
-  color: white;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.brand-name {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.brand-subtitle,
-.eyebrow,
-.section-label {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.brand-subtitle {
-  margin-top: 3px;
-}
-
-nav {
-  display: grid;
-  gap: 4px;
-}
-
-.nav-item {
-  padding: 11px 12px;
-  border-radius: 8px;
-  color: #4f4d47;
-  font-size: 14px;
-}
-
-.nav-item-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.main-content {
-  min-width: 0;
-  flex: 1;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 82px;
-  padding: 18px 32px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-
-.page-title {
-  margin-top: 5px;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.foundation-badge {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.welcome-panel {
-  max-width: 900px;
-  margin: 48px auto;
-  padding: 36px;
-}
-
-.welcome-copy {
-  max-width: 700px;
-}
-
-.section-label {
-  margin: 0 0 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(30px, 4vw, 48px);
-  line-height: 1.08;
-}
-
-.welcome-copy p:last-child {
-  max-width: 650px;
-  margin: 18px 0 0;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1.6;
-}
-
-.foundation-list {
-  margin-top: 36px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-}
-
-.status-row:last-child {
-  border-bottom: 0;
-}
-
-.status-row strong {
-  color: var(--accent);
-  font-size: 13px;
-}
-
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--background); color: var(--text); font-family: Arial, Helvetica, sans-serif; }
+button, input, textarea, select { font: inherit; }
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar { width: 260px; flex: 0 0 260px; padding: 24px 16px; background: var(--surface); border-right: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px 28px; }
+.brand-mark { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 10px; background: var(--accent); color: white; font-size: 13px; font-weight: 700; }
+.brand-name { font-size: 16px; font-weight: 700; }
+.brand-subtitle, .eyebrow, .section-label { color: var(--muted); font-size: 12px; }
+.brand-subtitle { margin-top: 3px; }
+nav { display: grid; gap: 4px; }
+.nav-item { padding: 11px 12px; border-radius: 8px; color: #4f4d47; font-size: 14px; }
+.nav-item-active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.main-content { min-width: 0; flex: 1; }
+.topbar { display: flex; align-items: center; justify-content: space-between; min-height: 82px; padding: 18px 32px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.page-title { margin-top: 5px; font-size: 20px; font-weight: 700; }
+.foundation-badge { padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; }
+.welcome-panel, .page-panel { max-width: 1100px; margin: 42px auto; padding: 32px; }
+.welcome-copy { max-width: 700px; }
+.section-label { margin: 0 0 8px; text-transform: uppercase; letter-spacing: .08em; }
+h1 { margin: 0; font-size: clamp(30px, 4vw, 48px); line-height: 1.08; }
+.page-intro, .welcome-copy p:last-child { max-width: 720px; margin: 18px 0 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
+.foundation-list { margin-top: 36px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.status-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.status-row:last-child { border-bottom: 0; }
+.status-row strong { color: var(--accent); font-size: 13px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+.dashboard-card, .empty-state { display: grid; gap: 8px; padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.dashboard-card span { color: var(--muted); font-size: 13px; }
+.dashboard-card strong { font-size: 18px; }
+.dashboard-card small, .empty-state span { color: var(--muted); line-height: 1.5; }
+.empty-state { margin-top: 28px; max-width: 760px; }
 @media (max-width: 800px) {
-  .app-shell {
-    display: block;
-  }
-
-  .sidebar {
-    width: 100%;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  nav {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
-  .nav-item {
-    flex: 0 0 auto;
-  }
-
-  .topbar {
-    padding: 16px 20px;
-  }
-
-  .welcome-panel {
-    margin: 24px auto;
-    padding: 20px;
-  }
+  .app-shell { display: block; }
+  .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); }
+  nav { display: flex; overflow-x: auto; padding-bottom: 4px; }
+  .nav-item { flex: 0 0 auto; }
+  .topbar { padding: 16px 20px; }
+  .welcome-panel, .page-panel { margin: 24px auto; padding: 20px; }
+  .dashboard-grid { grid-template-columns: 1fr; }
 }
