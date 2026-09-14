@@ -21,12 +21,14 @@ export async function proxy(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims()
   const user = data?.claims
-  const isLogin = request.nextUrl.pathname === '/login'
+  const pathname = request.nextUrl.pathname
+  const isLogin = pathname === '/login'
+  const isAuthCallback = pathname === '/auth/callback'
 
-  if (!user && !isLogin) {
+  if (!user && !isLogin && !isAuthCallback) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
-    loginUrl.searchParams.set('next', request.nextUrl.pathname)
+    loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
