@@ -1,0 +1,1 @@
+-- The inventory transaction enum uses purchase_receipt, not receipt. The final receive_purchase definition is recorded in the workflow migration chain.
