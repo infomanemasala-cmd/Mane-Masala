@@ -1,0 +1,1 @@
+Logo asset is stored separately; this marker will be replaced by the binary logo commit.
