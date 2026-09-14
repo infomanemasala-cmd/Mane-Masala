@@ -15,9 +15,17 @@ export default function LoginPage() {
     setBusy(true)
     setMessage('')
     const supabase = createClient()
+    const next = new URLSearchParams(window.location.search).get('next') ?? '/dashboard'
+    const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
+    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNext)}`
+
     const result = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo },
+        })
 
     if (result.error) {
       setMessage(result.error.message)
@@ -26,13 +34,13 @@ export default function LoginPage() {
     }
 
     if (mode === 'signup' && !result.data.session) {
-      setMessage('Account created. Check your email if confirmation is required, then sign in.')
+      setMessage('Account created. Check your email to verify the account, then sign in.')
       setMode('signin')
       setBusy(false)
       return
     }
 
-    window.location.href = '/dashboard'
+    window.location.href = safeNext
   }
 
   return (
