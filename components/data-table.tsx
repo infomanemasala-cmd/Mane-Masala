@@ -1,0 +1,156 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+type Row = Record<string, unknown>
+
+const PAGE_SIZES = [20, 50, 100]
+const HIDDEN_COLUMNS = new Set(['id', 'created_at', 'updated_at'])
+const SEARCH_COLUMNS: Record<string, string[]> = {
+  items: ['business_code', 'name', 'item_type', 'subcategory', 'product_family', 'notes'],
+  suppliers: ['business_code', 'business_name', 'contact_person', 'supplier_type', 'phone', 'whatsapp', 'upi_id', 'gst_number', 'email', 'notes'],
+  customers: ['business_code', 'name', 'customer_type', 'phone', 'whatsapp', 'email', 'gst_number', 'notes'],
+  units: ['code', 'name', 'symbol'],
+  categories: ['code', 'name'],
+  sub_agents: ['business_code', 'name', 'phone', 'whatsapp', 'notes'],
+  purchases: ['business_code', 'supplier_invoice_number', 'system_reference', 'purchase_source', 'financial_status', 'workflow_status', 'notes'],
+  inventory_transactions: ['business_code', 'transaction_type', 'reference_type', 'notes'],
+  v_inventory_current: ['business_code', 'name'],
+  recipes: ['business_code', 'name', 'status', 'notes'],
+  production_batches: ['business_code', 'status', 'wife_approval_status', 'notes'],
+  orders: ['business_code', 'source', 'status', 'requests', 'notes'],
+  sales: ['business_code', 'status', 'notes'],
+  invoices: ['business_code', 'invoice_number', 'financial_year', 'status', 'notes'],
+  supplier_payments: ['business_code', 'payment_method', 'upi_reference', 'notes'],
+  customer_payments: ['business_code', 'payment_method', 'upi_reference', 'notes'],
+  v_supplier_outstanding: ['business_code', 'business_name'],
+  v_customer_outstanding: ['business_code', 'name'],
+}
+
+const DEFAULT_SORT: Record<string, string> = {
+  items: 'business_code',
+  units: 'code',
+  categories: 'code',
+  suppliers: 'business_name',
+  customers: 'name',
+  sub_agents: 'name',
+  v_inventory_current: 'business_code',
+  v_supplier_outstanding: 'business_name',
+  v_customer_outstanding: 'name',
+}
+
+function label(column: string) {
+  return column.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  return String(value)
+}
+
+function safeSearch(value: string) {
+  return value.replace(/[%,()]/g, ' ').trim()
+}
+
+export default function DataTable({ table }: { table: string }) {
+  const [rows, setRows] = useState<Row[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState(DEFAULT_SORT[table] ?? 'created_at')
+  const [ascending, setAscending] = useState(Boolean(DEFAULT_SORT[table]))
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setPage(1)
+    setSort(DEFAULT_SORT[table] ?? 'created_at')
+    setAscending(Boolean(DEFAULT_SORT[table]))
+  }, [table])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      const sb = createClient()
+      let query = sb
+        .from(table)
+        .select('*', { count: 'exact' })
+        .order(sort, { ascending, nullsFirst: false })
+        .range((page - 1) * pageSize, page * pageSize - 1)
+
+      const term = safeSearch(search)
+      const fields = SEARCH_COLUMNS[table] ?? []
+      if (term && fields.length) {
+        query = query.or(fields.map((field) => `${field}.ilike.%${term}%`).join(','))
+      }
+
+      const { data, count, error: queryError } = await query
+      if (cancelled) return
+      if (queryError) setError(queryError.message)
+      else {
+        setRows((data ?? []) as Row[])
+        setTotal(count ?? 0)
+      }
+      setLoading(false)
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [table, page, pageSize, search, sort, ascending])
+
+  const columns = useMemo(() => {
+    const first = rows[0]
+    if (!first) return []
+    return Object.keys(first).filter((column) => !HIDDEN_COLUMNS.has(column) && !column.endsWith('_id') && column !== 'created_by' && column !== 'approved_by' && column !== 'confirmed_by')
+  }, [rows])
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const start = total ? (page - 1) * pageSize + 1 : 0
+  const end = Math.min(page * pageSize, total)
+
+  const chooseSort = (column: string) => {
+    if (sort === column) setAscending((value) => !value)
+    else {
+      setSort(column)
+      setAscending(true)
+    }
+    setPage(1)
+  }
+
+  const changeSearch = (value: string) => {
+    setSearch(value)
+    setPage(1)
+  }
+
+  if (error) return <p className="form-status form-status-error">{error}</p>
+
+  return <div className="data-table">
+    <div className="table-toolbar">
+      <input className="table-search" value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search…" aria-label={`Search ${table}`} />
+      <div className="table-toolbar-right">
+        <span className="table-count">{total} record{total === 1 ? '' : 's'}</span>
+        <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }} aria-label="Rows per page">
+          {PAGE_SIZES.map((size) => <option key={size} value={size}>{size} per page</option>)}
+        </select>
+      </div>
+    </div>
+    <div className="table-wrap">
+      <table>
+        <thead><tr>{columns.map((column) => <th key={column}><button className="table-sort" type="button" onClick={() => chooseSort(column)}>{label(column)} {sort === column ? (ascending ? '↑' : '↓') : '↕'}</button></th>)}</tr></thead>
+        <tbody>{loading ? <tr><td colSpan={Math.max(columns.length, 1)} className="table-message">Loading…</td></tr> : !rows.length ? <tr><td colSpan={Math.max(columns.length, 1)} className="table-message">No records found.</td></tr> : rows.map((row, index) => <tr key={String(row.id ?? `${page}-${index}`)}>{columns.map((column) => <td key={column}>{displayValue(row[column])}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+    <div className="table-pagination">
+      <span>Showing {start}–{end} of {total}</span>
+      <div>
+        <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page <= 1}>Previous</button>
+        <span>Page {page} of {totalPages}</span>
+        <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page >= totalPages}>Next</button>
+      </div>
+    </div>
+  </div>
+}
