@@ -1,2 +1,2 @@
-import BusinessConsole from '@/components/business-console'
-export default function PurchasesPage(){return <BusinessConsole module="purchases"/>}
+import OperationsConsole from '@/components/operations-console'
+export default function PurchasesPage(){return <OperationsConsole module="purchases"/>}
