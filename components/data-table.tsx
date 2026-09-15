@@ -13,18 +13,23 @@ const SEARCH_COLUMNS: Record<string, string[]> = {
   units: ['code','name','symbol'], categories: ['code','name'], sub_agents: ['business_code','name','phone','whatsapp','notes'],
   purchases: ['business_code','supplier_invoice_number','system_reference','purchase_source','financial_status','workflow_status','notes'],
   v_purchases_list: ['business_code','supplier_code','supplier_name','supplier_invoice_number','purchase_source','financial_status','workflow_status'],
-  inventory_transactions: ['business_code','transaction_type','reference_type','notes'],
+  purchase_lines: ['purchase_id','item_id','billed_quantity','unit_rate','line_total','notes'],
+  inventory_transactions: ['business_code','transaction_type','reference_type','reference_id','notes'],
   v_inventory_current: ['business_code','name'], recipes: ['business_code','name','status','notes'],
   production_batches: ['business_code','status','wife_approval_status','notes'],
-  v_production_batches_list: ['business_code','output_item_code','output_item_name','status','wife_approval_status'],
+  v_production_batches_list: ['business_code','output_item_code','output_item_name','status','wife_approval_status','order_code','recipe_version'],
+  v_order_production_plan: ['production_batch_code','production_batch_id','output_item_code','output_item_name','ingredient_item_code','ingredient_item_name','status','wife_approval_status','recipe_version'],
+  production_consumption: ['production_batch_id','ingredient_item_id','planned_quantity','actual_quantity','consumption_date','notes'],
   orders: ['business_code','source','status','order_party_type','requests','notes'],
   v_orders_list: ['business_code','billing_customer_code','billing_customer_name','sub_agent_code','sub_agent_name','end_customer','source','status','order_party_type'],
-  dispatches: ['business_code','dispatch_date','dispatch_method','status','notes'],
-  sales: ['business_code','status','notes'], invoices: ['business_code','invoice_number','financial_year','status','notes'],
-  supplier_payments: ['business_code','payment_method','upi_reference','notes'], customer_payments: ['business_code','payment_method','upi_reference','notes'],
+  dispatches: ['business_code','order_id','dispatch_date','dispatch_method','status','notes'],
+  sales: ['business_code','order_id','dispatch_id','sale_date','status','notes'], invoices: ['business_code','sale_id','invoice_number','financial_year','invoice_date','status','notes'],
+  supplier_payments: ['business_code','supplier_id','payment_date','payment_method','upi_reference','notes'], customer_payments: ['business_code','customer_id','payment_date','payment_method','upi_reference','notes'],
+  supplier_advances: ['supplier_id','payment_id','advance_date','status','notes'], customer_advances: ['customer_id','payment_id','order_id','advance_date','status','notes'],
+  stock_outs: ['business_code','item_id','stock_out_date','reason','notes'], stock_adjustments: ['business_code','item_id','adjustment_date','reason','notes'],
   v_supplier_outstanding: ['business_code','business_name'], v_customer_outstanding: ['business_code','name'],
 }
-const DEFAULT_SORT: Record<string,string> = { items:'item_code', units:'code', categories:'code', suppliers:'business_name', customers:'name', sub_agents:'name', v_inventory_current:'business_code', v_purchases_list:'purchase_date', v_orders_list:'order_date', v_production_batches_list:'production_date', dispatches:'dispatch_date', sales:'sale_date', invoices:'invoice_date', supplier_payments:'payment_date', customer_payments:'payment_date', v_supplier_outstanding:'business_name', v_customer_outstanding:'name' }
+const DEFAULT_SORT: Record<string,string> = { items:'item_code', units:'code', categories:'code', suppliers:'business_name', customers:'name', sub_agents:'name', purchases:'purchase_date', purchase_lines:'created_at', v_purchases_list:'purchase_date', inventory_transactions:'occurred_at', v_inventory_current:'business_code', recipes:'business_code', production_batches:'production_date', v_production_batches_list:'production_date', v_order_production_plan:'production_date', production_consumption:'consumption_date', orders:'order_date', v_orders_list:'order_date', dispatches:'dispatch_date', sales:'sale_date', invoices:'invoice_date', supplier_payments:'payment_date', customer_payments:'payment_date', supplier_advances:'advance_date', customer_advances:'advance_date', stock_outs:'stock_out_date', stock_adjustments:'adjustment_date', v_supplier_outstanding:'business_name', v_customer_outstanding:'name' }
 function label(column:string){if(column==='item_code')return 'Item Code';return column.replaceAll('_',' ').replace(/\b\w/g,l=>l.toUpperCase())}
 function displayValue(value:unknown){if(value===null||value===undefined)return '';if(typeof value==='boolean')return value?'Yes':'No';return String(value)}
 function safeSearch(value:string){return value.replace(/[%,()]/g,' ').trim()}
