@@ -1,2 +1,5 @@
-import OperationsConsoleFinal2 from '@/components/operations-console-final2'
-export default function InventoryPage(){return <OperationsConsoleFinal2 module="inventory"/>}
+import InventoryConsoleV2 from '@/components/inventory-console-v2'
+
+export default function InventoryPage() {
+  return <InventoryConsoleV2 />
+}
