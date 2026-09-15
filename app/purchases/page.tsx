@@ -1,2 +1,5 @@
-import PurchaseConsoleFinal2 from '@/components/purchase-console-final2'
-export default function PurchasesPage(){return <PurchaseConsoleFinal2/>}
+import PurchaseConsoleV2 from '@/components/purchase-console-v2'
+
+export default function PurchasesPage() {
+  return <PurchaseConsoleV2 />
+}
