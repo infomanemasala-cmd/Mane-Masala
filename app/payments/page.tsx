@@ -1,2 +1,2 @@
-import OperationsConsole from '@/components/operations-console'
-export default function PaymentsPage(){return <OperationsConsole module="payments"/>}
+import OperationsConsoleFinal from '@/components/operations-console-final'
+export default function PaymentsPage(){return <OperationsConsoleFinal module="payments"/>}
