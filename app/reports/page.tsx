@@ -1,2 +1,2 @@
-import BusinessConsole from '@/components/business-console'
-export default function ReportsPage(){return <BusinessConsole module="reports"/>}
+import ReportConsole from '@/components/report-console'
+export default function ReportsPage(){return <ReportConsole/>}
