@@ -1,2 +1,2 @@
-import OperationsConsole from '@/components/operations-console'
-export default function OrdersPage(){return <OperationsConsole module="orders"/>}
+import OperationsConsoleFinal from '@/components/operations-console-final'
+export default function OrdersPage(){return <OperationsConsoleFinal module="orders"/>}
