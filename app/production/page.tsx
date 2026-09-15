@@ -1,5 +1,5 @@
-import ProductionConsoleV2 from '@/components/production-console-v2'
+import ProductionConsoleFixed from '@/components/production-console-fixed'
 
 export default function ProductionPage() {
-  return <ProductionConsoleV2 />
+  return <ProductionConsoleFixed />
 }
