@@ -10,7 +10,7 @@ begin
  select * into oldrv from public.recipe_versions where id=b.recipe_version_id;
  if oldrv.id is null then raise exception 'Recipe version not found'; end if;
  select coalesce(max(version_number),0)+1 into v_next from public.recipe_versions where recipe_id=oldrv.recipe_id;
- insert into public.recipe_versions(recipe_id,version_number,expected_output_quantity,output_unit_id,notes,status,effective_from,created_by) values(oldrv.recipe_id,v_next,oldrv.expected_output_quantity,oldrv.output_unit_id,coalesce(oldrv.notes,'')||' | learned from actual production batch '||coalesce(b.id::text,''),'active',current_date,v_user) returning id into v_new;
+ insert into public.recipe_versions(recipe_id,version_number,expected_output_quantity,output_unit_id,notes,status,effective_from,created_by) values(oldrv.recipe_id,v_next,p_actual_output,oldrv.output_unit_id,coalesce(oldrv.notes,'')||' | learned from actual production batch '||coalesce(b.id::text,''),'active',current_date,v_user) returning id into v_new;
  for x in select ingredient_item_id,unit_id,sum(actual_quantity) actual_quantity from jsonb_to_recordset(p_consumptions) as z(ingredient_item_id uuid,actual_quantity numeric,unit_id uuid) where actual_quantity>0 group by ingredient_item_id,unit_id order by ingredient_item_id loop
   v_scale:=oldrv.expected_output_quantity/p_actual_output;
   v_qty:=x.actual_quantity*v_scale;
