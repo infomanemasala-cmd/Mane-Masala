@@ -1,46 +1,37 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import DataTable from '@/components/data-table'
 
 type Row = Record<string, any>
 const sb = () => createClient()
 const today = () => new Date().toISOString().slice(0, 10)
 const text = (v: any) => String(v ?? '')
 
-function Select({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
-  return <select value={value} onChange={e => onChange(e.target.value)}>{children}</select>
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><h3>{title}</h3><button className="secondary-button" onClick={onClose}>Close</button></div>{children}</div></div>
-}
-
-function Status({ message, error = false }: { message: string; error?: boolean }) {
-  return message ? <p className={`form-status${error ? ' form-status-error' : ''}`}>{message}</p> : null
-}
+function Select({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) { return <select value={value} onChange={e => onChange(e.target.value)}>{children}</select> }
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) { return <div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><h3>{title}</h3><button className="secondary-button" onClick={onClose}>Close</button></div>{children}</div></div> }
+function Status({ message, error = false }: { message: string; error?: boolean }) { return message ? <p className={`form-status${error ? ' form-status-error' : ''}`}>{message}</p> : null }
 
 export default function PurchaseConsoleV2() {
-  const [purchases, setPurchases] = useState<Row[]>([]), [suppliers, setSuppliers] = useState<Row[]>([]), [items, setItems] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [units, setUnits] = useState<Row[]>([])
-  const [search, setSearch] = useState(''), [open, setOpen] = useState(false), [newItemOpen, setNewItemOpen] = useState(false), [newItemLine, setNewItemLine] = useState(0)
+  const [suppliers, setSuppliers] = useState<Row[]>([]), [items, setItems] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [units, setUnits] = useState<Row[]>([])
+  const [open, setOpen] = useState(false), [newItemOpen, setNewItemOpen] = useState(false), [newItemLine, setNewItemLine] = useState(0)
   const [sid, setSid] = useState(''), [purchaseDate, setPurchaseDate] = useState(today()), [invoiceNumber, setInvoiceNumber] = useState(''), [source, setSource] = useState('other'), [notes, setNotes] = useState('')
   const [lines, setLines] = useState([{ itemId: '', quantity: '', rate: '' }]), [createdPurchase, setCreatedPurchase] = useState<Row | null>(null), [file, setFile] = useState<File | null>(null), [msg, setMsg] = useState(''), [error, setError] = useState(false), [saving, setSaving] = useState(false)
   const [newItemName, setNewItemName] = useState(''), [newItemType, setNewItemType] = useState('raw_material'), [newCategory, setNewCategory] = useState(''), [newUnit, setNewUnit] = useState(''), [newMinimum, setNewMinimum] = useState('2')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const load = async () => {
-    const [p, s, i, c, u] = await Promise.all([
-      sb().from('purchases').select('*').order('created_at', { ascending: false }).limit(100),
+  const loadMasters = async () => {
+    const [s, i, c, u] = await Promise.all([
       sb().from('suppliers').select('*').eq('is_active', true).order('business_name').limit(200),
       sb().from('items').select('*').eq('is_active', true).order('name').limit(300),
       sb().from('categories').select('*').order('name').limit(100),
       sb().from('units').select('*').order('name').limit(50),
     ])
-    setPurchases((p.data ?? []) as Row[]); setSuppliers((s.data ?? []) as Row[]); setItems((i.data ?? []) as Row[]); setCategories((c.data ?? []) as Row[]); setUnits((u.data ?? []) as Row[])
+    setSuppliers((s.data ?? []) as Row[]); setItems((i.data ?? []) as Row[]); setCategories((c.data ?? []) as Row[]); setUnits((u.data ?? []) as Row[])
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void loadMasters() }, [])
 
-  const filtered = useMemo(() => { const q = search.trim().toLowerCase(); return q ? purchases.filter(r => [r.business_code, r.supplier_invoice_number, r.purchase_date, r.financial_status, r.workflow_status].some(v => text(v).toLowerCase().includes(q))) : purchases }, [purchases, search])
   const updateLine = (index: number, key: 'itemId' | 'quantity' | 'rate', value: string) => setLines(prev => prev.map((l, i) => i === index ? { ...l, [key]: value } : l))
   const addLine = () => setLines(prev => [...prev, { itemId: '', quantity: '', rate: '' }])
   const removeLine = (index: number) => setLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== index))
@@ -67,7 +58,7 @@ export default function PurchaseConsoleV2() {
     const payload = valid.map(l => { const item = items.find(x => text(x.id) === l.itemId); const qty = Number(l.quantity); const rate = l.rate === '' ? null : Number(l.rate); return { purchase_id: purchase.id, item_id: l.itemId, billed_quantity: qty, unit_id: item?.base_unit_id, unit_rate: rate, line_total: rate == null ? null : qty * rate } })
     const { error: le } = await sb().from('purchase_lines').insert(payload)
     if (le) { setSaving(false); setError(true); setMsg(`Purchase header saved, but lines failed: ${le.message}`); return }
-    setCreatedPurchase(purchase); setSaving(false); setMsg('Purchase saved. Attach the invoice or shopkeeper slip next.'); await load()
+    setCreatedPurchase(purchase); setSaving(false); setMsg('Purchase saved. Attach the invoice or shopkeeper slip next.')
   }
 
   const uploadAttachment = async () => {
@@ -81,55 +72,13 @@ export default function PurchaseConsoleV2() {
     if (ae) { setError(true); setMsg(`File uploaded, but could not link it: ${ae.message}`); return }
     setMsg('Invoice / slip attached successfully.'); setFile(null); if (fileRef.current) fileRef.current.value = ''
   }
+  const close = () => { setOpen(false); setNewItemOpen(false); setCreatedPurchase(null); setFile(null); setMsg(''); setError(false); setLines([{ itemId: '', quantity: '', rate: '' }]); setSid(''); setInvoiceNumber(''); setNotes(''); setPurchaseDate(today()) }
 
-  const close = () => { setOpen(false); setNewItemOpen(false); setCreatedPurchase(null); setFile(null); setMsg(''); setError(false); setLines([{ itemId: '', quantity: '', rate: '' }]); setSid(''); setInvoiceNumber(''); setNotes('') }
-
-  return <section className="page-panel">
-    <div className="section-label">Mane Masala</div>
-    <div className="master-header"><div><h1>Purchases</h1><p className="page-intro">One supplier → one bill → multiple items → one saved document.</p></div><button className="primary-button" onClick={() => { setMsg(''); setError(false); setOpen(true) }}>+ Create Purchase</button></div>
-    <div className="table-toolbar" style={{ marginBottom: 18 }}><input className="table-search" placeholder="Search purchases..." value={search} onChange={e => setSearch(e.target.value)} /><span className="table-count">{filtered.length} purchase{filtered.length === 1 ? '' : 's'}</span></div>
-
+  return <section className="page-panel"><div className="section-label">Mane Masala</div><div className="master-header"><div><h1>Purchases</h1><p className="page-intro">One supplier → one bill → multiple items → one saved document.</p></div><button className="primary-button" onClick={() => { setMsg(''); setError(false); setOpen(true) }}>+ Create Purchase</button></div>
     {open && <Modal title={createdPurchase ? `Purchase ${text(createdPurchase.business_code)}` : 'Create Purchase'} onClose={close}>
-      {!createdPurchase ? <>
-        <div className="purchase-step"><span>1</span><div><strong>Supplier and bill</strong><small>Select the supplier once. Every item row below belongs to this same bill.</small></div></div>
-        <div className="form-grid purchase-form-grid">
-          <label className="field"><span>Supplier</span><Select value={sid} onChange={setSid}><option value="">Select supplier</option>{suppliers.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.business_name)}</option>)}</Select></label>
-          <label className="field"><span>Bill date</span><input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></label>
-          <label className="field"><span>Supplier invoice number <em>optional</em></span><input placeholder="If written on the bill" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} /></label>
-          <label className="field"><span>Source</span><Select value={source} onChange={setSource}><option value="whatsapp">WhatsApp</option><option value="phone">Phone</option><option value="walk_in">Walk-in</option><option value="online">Online</option><option value="other">Other</option></Select></label>
-        </div>
-        <div className="purchase-step"><span>2</span><div><strong>Items on this bill</strong><small>Use “＋ Add item row” when the invoice has another product.</small></div></div>
-        <div className="purchase-lines">{lines.map((line, index) => <div className="purchase-line" key={index}>
-          <label className="field item-field"><span>Item</span><Select value={line.itemId} onChange={v => selectItem(index, v)}><option value="">Select item</option>{items.map(item => <option key={text(item.id)} value={text(item.id)}>{text(item.item_code) ? `${text(item.item_code)} — ` : ''}{text(item.name)}</option>)}<option value="__new__">＋ Create new Item</option></Select></label>
-          <label className="field"><span>Quantity</span><input type="number" min="0" step="0.001" placeholder="0" value={line.quantity} onChange={e => updateLine(index, 'quantity', e.target.value)} /></label>
-          <label className="field"><span>Rate / unit <em>optional</em></span><input type="number" min="0" step="0.01" placeholder="0.00" value={line.rate} onChange={e => updateLine(index, 'rate', e.target.value)} /></label>
-          <div className="purchase-line-total">{line.quantity && line.rate ? `₹ ${(Number(line.quantity) * Number(line.rate)).toFixed(2)}` : 'Rate not entered'}</div>
-          <button className="line-remove" type="button" onClick={() => removeLine(index)} disabled={lines.length === 1}>Remove</button>
-        </div>)}</div>
-        <button className="add-row-button" type="button" onClick={addLine}>＋ Add item row</button>
-        <label className="field purchase-notes"><span>Notes <em>optional</em></span><textarea placeholder="Anything useful about this bill" value={notes} onChange={e => setNotes(e.target.value)} /></label>
-        <div className="purchase-actions"><button className="primary-button" onClick={createPurchase} disabled={saving}>{saving ? 'Saving...' : 'Create Purchase & continue'}</button></div>
-        <Status message={msg} error={error}/>
-      </> : <>
-        <div className="purchase-complete-banner"><strong>Purchase saved</strong><span>{text(createdPurchase.business_code)} · {purchaseDate}</span></div>
-        <div className="purchase-step"><span>3</span><div><strong>Attach the invoice / shopkeeper slip</strong><small>Take a photo on mobile, or choose a PDF/document on desktop.</small></div></div>
-        <div className="attachment-box"><input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={e => setFile(e.target.files?.[0] ?? null)} /><div>{file ? <strong>{file.name}</strong> : 'Choose invoice or written slip'}</div><button className="primary-button" onClick={uploadAttachment} disabled={!file}>Upload & attach</button></div>
-        <Status message={msg} error={error}/><div className="purchase-actions"><button className="secondary-button" onClick={close}>Finish</button></div>
-      </>}
+      {!createdPurchase ? <><div className="purchase-step"><span>1</span><div><strong>Supplier and bill</strong><small>Select the supplier once. Every item row belongs to this same bill.</small></div></div><div className="form-grid purchase-form-grid"><label className="field"><span>Supplier</span><Select value={sid} onChange={setSid}><option value="">Select supplier</option>{suppliers.map(s => <option key={text(s.id)} value={text(s.id)}>{text(s.business_name)}</option>)}</Select></label><label className="field"><span>Bill date</span><input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></label><label className="field"><span>Supplier invoice number <em>optional</em></span><input placeholder="If written on the bill" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} /></label><label className="field"><span>Source</span><Select value={source} onChange={setSource}><option value="whatsapp">WhatsApp</option><option value="phone">Phone</option><option value="walk_in">Walk-in</option><option value="online">Online</option><option value="other">Other</option></Select></label></div><div className="purchase-step"><span>2</span><div><strong>Items on this bill</strong><small>Add as many item rows as the supplier bill contains.</small></div></div><div className="purchase-lines">{lines.map((line, index) => <div className="purchase-line" key={index}><label className="field item-field"><span>Item</span><Select value={line.itemId} onChange={v => selectItem(index, v)}><option value="">Select item</option>{items.map(item => <option key={text(item.id)} value={text(item.id)}>{text(item.item_code) ? `${text(item.item_code)} — ` : ''}{text(item.name)}</option>)}<option value="__new__">＋ Create new Item</option></Select></label><label className="field"><span>Quantity</span><input type="number" min="0" step="0.001" placeholder="0" value={line.quantity} onChange={e => updateLine(index, 'quantity', e.target.value)} /></label><label className="field"><span>Rate / unit <em>optional</em></span><input type="number" min="0" step="0.01" placeholder="0.00" value={line.rate} onChange={e => updateLine(index, 'rate', e.target.value)} /></label><div className="purchase-line-total">{line.quantity && line.rate ? `₹ ${(Number(line.quantity) * Number(line.rate)).toFixed(2)}` : 'Rate not entered'}</div><button className="line-remove" type="button" onClick={() => removeLine(index)} disabled={lines.length === 1}>Remove</button></div>)}</div><button className="add-row-button" type="button" onClick={addLine}>＋ Add item row</button><label className="field purchase-notes"><span>Notes <em>optional</em></span><textarea placeholder="Anything useful about this bill" value={notes} onChange={e => setNotes(e.target.value)} /></label><div className="purchase-actions"><button className="primary-button" onClick={createPurchase} disabled={saving}>{saving ? 'Saving...' : 'Create Purchase & continue'}</button></div><Status message={msg} error={error}/></> : <><div className="purchase-complete-banner"><strong>Purchase saved</strong><span>{text(createdPurchase.business_code)} · {purchaseDate}</span></div><div className="purchase-step"><span>3</span><div><strong>Attach the invoice / shopkeeper slip</strong><small>Take a photo on mobile, or choose a PDF/document on desktop.</small></div></div><div className="attachment-box"><input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={e => setFile(e.target.files?.[0] ?? null)} /><div>{file ? <strong>{file.name}</strong> : 'Choose invoice or written slip'}</div><button className="primary-button" onClick={uploadAttachment} disabled={!file}>Upload & attach</button></div><Status message={msg} error={error}/><div className="purchase-actions"><button className="secondary-button" onClick={close}>Finish</button></div></>}
     </Modal>}
-
-    {newItemOpen && <Modal title="Create Item without leaving Purchase" onClose={() => setNewItemOpen(false)}>
-      <p className="muted">Create the item here. When saved, you return to the same purchase row with the new item selected.</p>
-      <div className="form-grid">
-        <label className="field"><span>Item name</span><input autoFocus value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="e.g. New chilli powder" /></label>
-        <label className="field"><span>Item type</span><Select value={newItemType} onChange={setNewItemType}><option value="raw_material">Raw Material</option><option value="intermediate">Intermediate / Prepared Material</option><option value="finished_product">Finished Product</option><option value="purchased_finished_product">Purchased Finished Product</option></Select></label>
-        <label className="field"><span>Category <em>optional</em></span><Select value={newCategory} onChange={setNewCategory}><option value="">No category</option>{categories.map(c => <option key={text(c.id)} value={text(c.id)}>{text(c.name)}</option>)}</Select></label>
-        <label className="field"><span>Unit</span><Select value={newUnit} onChange={setNewUnit}><option value="">Select unit</option>{units.map(u => <option key={text(u.id)} value={text(u.id)}>{text(u.name)}</option>)}</Select></label>
-        <label className="field"><span>Minimum stock</span><input type="number" min="0" step="0.001" value={newMinimum} onChange={e => setNewMinimum(e.target.value)} /></label>
-      </div>
-      <Status message={msg} error={error}/><div className="nested-modal-actions"><button className="secondary-button" onClick={() => setNewItemOpen(false)}>Cancel</button><button className="primary-button" onClick={createItem}>Create Item</button></div>
-    </Modal>}
-
-    <div className="table-wrap"><table><thead><tr><th>Business Code</th><th>Supplier</th><th>Purchase Date</th><th>Invoice No.</th><th>Financial Status</th><th>Workflow Status</th></tr></thead><tbody>{filtered.map((r, i) => <tr key={text(r.id) || i}><td>{text(r.business_code)}</td><td>{text(suppliers.find(s => text(s.id) === text(r.supplier_id))?.business_name) || text(r.supplier_id)}</td><td>{text(r.purchase_date)}</td><td>{text(r.supplier_invoice_number) || '—'}</td><td>{text(r.financial_status)}</td><td>{text(r.workflow_status)}</td></tr>)}{!filtered.length && <tr><td colSpan={6} className="table-message">No matching purchases.</td></tr>}</tbody></table></div>
+    {newItemOpen && <Modal title="Create Item without leaving Purchase" onClose={() => setNewItemOpen(false)}><p className="muted">Create the item here. When saved, you return to the same purchase row with the new item selected.</p><div className="form-grid"><label className="field"><span>Item name</span><input autoFocus value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="e.g. New chilli powder" /></label><label className="field"><span>Item type</span><Select value={newItemType} onChange={setNewItemType}><option value="raw_material">Raw Material</option><option value="intermediate">Intermediate / Prepared Material</option><option value="finished_product">Finished Product</option><option value="purchased_finished_product">Purchased Finished Product</option></Select></label><label className="field"><span>Category <em>optional</em></span><Select value={newCategory} onChange={setNewCategory}><option value="">No category</option>{categories.map(c => <option key={text(c.id)} value={text(c.id)}>{text(c.name)}</option>)}</Select></label><label className="field"><span>Unit</span><Select value={newUnit} onChange={setNewUnit}><option value="">Select unit</option>{units.map(u => <option key={text(u.id)} value={text(u.id)}>{text(u.name)} ({text(u.symbol)})</option>)}</Select></label><label className="field"><span>Minimum stock</span><input type="number" min="0" step="0.001" value={newMinimum} onChange={e => setNewMinimum(e.target.value)} /></label></div><Status message={msg} error={error}/><div className="nested-modal-actions"><button className="secondary-button" onClick={() => setNewItemOpen(false)}>Cancel</button><button className="primary-button" onClick={createItem}>Create Item</button></div></Modal>}
+    <div style={{ marginTop: 18 }}><DataTable table="purchases"/></div>
   </section>
 }
