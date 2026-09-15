@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import './globals.css'
+import './phase4e.css'
 import ThemePicker from '@/components/theme-picker'
 
 export const metadata: Metadata = { title:'Mane Masala Business System', description:'Business management system for Mane Masala' }
