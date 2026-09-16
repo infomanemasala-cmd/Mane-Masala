@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import DataTable from '@/components/data-table'
 import MasterManager from '@/components/master-manager'
+import RecipeManager from '@/components/recipe-manager'
 
 type Module = 'dashboard' | 'masters' | 'purchases' | 'inventory' | 'production' | 'orders' | 'sales' | 'payments' | 'reports'
-const masterTables = ['items', 'suppliers', 'customers', 'units', 'categories', 'sub_agents'] as const
+const masterTables = ['items', 'suppliers', 'customers', 'units', 'categories', 'sub_agents', 'recipes'] as const
 
 type Row = Record<string, unknown>
 
@@ -40,7 +41,7 @@ function Dual({ title, a, b, al, bl }: { title: string; a: string; b: string; al
 
 function Masters() {
   const [table, setTable] = useState<(typeof masterTables)[number]>('items')
-  return <Page title="Masters & Settings"><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div><MasterManager table={table} /></Page>
+  return <Page title="Masters & Settings"><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} />}</Page>
 }
 
 function Dashboard() {
