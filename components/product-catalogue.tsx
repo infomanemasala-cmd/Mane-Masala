@@ -20,6 +20,6 @@ export default function ProductCatalogue() {
       <button className={tab === 'purchased_finished_product' ? 'tab-active' : ''} onClick={() => setTab('purchased_finished_product')}>Purchased Finished Products</button>
     </div>
     <p className="page-intro" style={{ marginTop: 10 }}>{title} are read from the live Item Master. No duplicate product records are created merely because an item can be sold and used in production.</p>
-    <DataTable table="items" filters={[{ column: 'item_type', operator: 'eq', value: tab }, { column: 'can_be_sold', operator: 'eq', value: 'true' }, { column: 'is_active', operator: 'eq', value: 'true' }]} />
+    <DataTable table="items" filters={[{ column: 'item_type', operator: 'eq', value: tab }, { column: 'can_be_sold', operator: 'eq', value: true }, { column: 'is_active', operator: 'eq', value: true }]} />
   </div>
 }
