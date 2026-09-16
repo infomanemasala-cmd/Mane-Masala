@@ -12,13 +12,8 @@ const masterTables = ['items', 'suppliers', 'customers', 'units', 'categories', 
 
 type Row = Record<string, unknown>
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="console-panel"><div className="panel-heading"><h2>{title}</h2></div>{children}</div>
-}
-
-function Page({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="page-panel"><div className="section-label">Mane Masala</div><h1>{title}</h1><p className="page-intro">Connected to the persistent Mane Masala database.</p>{children}</section>
-}
+function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <div className="console-panel"><div className="panel-heading"><h2>{title}</h2></div>{children}</div> }
+function Page({ title, children }: { title: string; children: React.ReactNode }) { return <section className="page-panel"><div className="section-label">Mane Masala</div><h1>{title}</h1><p className="page-intro">Connected to the persistent Mane Masala database.</p>{children}</section> }
 
 export default function BusinessConsole({ module }: { module: Module }) {
   if (module === 'masters') return <Masters />
@@ -32,30 +27,17 @@ export default function BusinessConsole({ module }: { module: Module }) {
   return <Dashboard />
 }
 
-function List({ title, table }: { title: string; table: string }) {
-  return <Page title={title}><Panel title={title}><DataTable table={table} /></Panel></Page>
-}
-
-function Dual({ title, a, b, al, bl }: { title: string; a: string; b: string; al: string; bl: string }) {
-  return <Page title={title}><div className="console-grid"><Panel title={al}><DataTable table={a} /></Panel><Panel title={bl}><DataTable table={b} /></Panel></Page>
-}
+function List({ title, table }: { title: string; table: string }) { return <Page title={title}><Panel title={title}><DataTable table={table} /></Panel></Page> }
+function Dual({ title, a, b, al, bl }: { title: string; a: string; b: string; al: string; bl: string }) { return <Page title={title}><div className="console-grid"><Panel title={al}><DataTable table={a} /></Panel><Panel title={bl}><DataTable table={b} /></Panel></div></Page> }
 
 function Masters() {
   const [table, setTable] = useState<(typeof masterTables)[number]>('items')
-  return <Page title="Masters & Settings">
-    <ProductCatalogue />
-    <div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>
-    {table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} />}
-  </Page>
+  return <Page title="Masters & Settings"><ProductCatalogue /><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} />}</Page>
 }
 
 function Dashboard() {
   const [counts, setCounts] = useState<Record<string, number>>({})
-  useEffect(() => {
-    const sb = createClient()
-    Promise.all(['items', 'suppliers', 'customers', 'purchases', 'orders'].map((table) => sb.from(table).select('*', { count: 'exact', head: true })))
-      .then((results) => setCounts(Object.fromEntries(['items', 'suppliers', 'customers', 'purchases', 'orders'].map((key, index) => [key, results[index].count ?? 0]))))
-  }, [])
+  useEffect(() => { const sb = createClient(); Promise.all(['items', 'suppliers', 'customers', 'purchases', 'orders'].map((table) => sb.from(table).select('*', { count: 'exact', head: true }))).then((results) => setCounts(Object.fromEntries(['items', 'suppliers', 'customers', 'purchases', 'orders'].map((key, index) => [key, results[index].count ?? 0])))) }, [])
   return <Page title="Dashboard"><div className="dashboard-grid">{Object.entries(counts).map(([key, value]) => <div className="dashboard-card" key={key}><span>{key}</span><strong>{value}</strong><small>Live database count</small></div>)}</div></Page>
 }
 
