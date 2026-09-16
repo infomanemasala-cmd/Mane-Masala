@@ -1,0 +1,108 @@
+'use client'
+
+import {useEffect,useMemo,useState} from 'react'
+import {createClient} from '@/lib/supabase/client'
+import DataTable from '@/components/data-table'
+
+type R=Record<string,any>
+const db=()=>createClient()
+const s=(v:any)=>String(v??'')
+const n=(v:any)=>Number(v??0)
+const today=()=>new Date().toISOString().slice(0,10)
+
+function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>}
+function Status({message,error}:{message:string,error:boolean}){return message?<p className={`form-status${error?' form-status-error':''}`} role="alert">{message}</p>:null}
+
+export default function OrdersConsoleV3(){
+ const[orders,setOrders]=useState<R[]>([]),[customers,setCustomers]=useState<R[]>([]),[items,setItems]=useState<R[]>([]),[units,setUnits]=useState<R[]>([]),[recipes,setRecipes]=useState<R[]>([]),[versions,setVersions]=useState<R[]>([])
+ const[selected,setSelected]=useState<R|null>(null),[lines,setLines]=useState<R[]>([]),[batches,setBatches]=useState<R[]>([]),[plans,setPlans]=useState<Record<string,R[]>>({}),[learning,setLearning]=useState<Record<string,R>>({})
+ const[choice,setChoice]=useState<Record<string,string>>({}),[extra,setExtra]=useState<Record<string,R>>({}),[dispatchDate,setDispatchDate]=useState('')
+ const[newOrder,setNewOrder]=useState(false),[customer,setCustomer]=useState(''),[orderDate,setOrderDate]=useState(today()),[source,setSource]=useState('phone'),[advance,setAdvance]=useState(''),[advanceMethod,setAdvanceMethod]=useState('upi'),[orderLines,setOrderLines]=useState<R[]>([{itemId:'',qty:'',rate:''}])
+ const[msg,setMsg]=useState(''),[err,setErr]=useState(false),[busy,setBusy]=useState(''),[refresh,setRefresh]=useState(0)
+
+ const load=async()=>{const sb=db();const[c,i,u,r,v,o,l]=await Promise.all([
+  sb.from('customers').select('*').eq('is_active',true).order('name'),
+  sb.from('items').select('*').eq('is_active',true).order('name'),
+  sb.from('units').select('*').eq('is_active',true).order('name'),
+  sb.from('recipes').select('id,name,output_item_id,status').eq('status','active'),
+  sb.from('recipe_versions').select('*').eq('status','active').order('version_number'),
+  sb.from('v_orders_list').select('*').order('order_date',{ascending:false}),
+  sb.from('v_production_yield_learning').select('*')
+ ]);setCustomers(c.data??[]);setItems(i.data??[]);setUnits(u.data??[]);setRecipes(r.data??[]);setVersions(v.data??[]);setOrders(o.data??[]);const lm:Record<string,R>={};for(const x of l.data??[])lm[s(x.recipe_version_id)]=x;setLearning(lm)}
+ useEffect(()=>{void load()},[])
+
+ const unit=(id:string)=>s(units.find(u=>s(u.id)===id)?.symbol||units.find(u=>s(u.id)===id)?.name||id)
+ const recipeName=(id:string)=>{const v=versions.find(x=>s(x.id)===id);const r=recipes.find(x=>s(x.id)===s(v?.recipe_id));return v&&r?`${s(r.name)} — v${s(v.version_number)}`:''}
+ const itemName=(id:string)=>s(items.find(i=>s(i.id)===id)?.name||id)
+
+ const openOrder=async(o:R)=>{
+  setSelected(o);setDispatchDate(s(o.estimated_dispatch_date));setMsg('');setErr(false)
+  const sb=db();
+  const[{data:l,error:le},{data:b,error:be},{data:inv,error:ie}]=await Promise.all([
+   sb.from('order_lines').select('*').eq('order_id',o.id).order('created_at'),
+   sb.from('v_production_batches_list').select('*').eq('order_id',o.id).order('production_date'),
+   sb.from('v_inventory_current').select('*')
+  ])
+  if(le||be||ie){setErr(true);setMsg(le?.message||be?.message||ie?.message||'Unable to load order');return}
+  const m=new Map((inv??[]).map(x=>[s(x.item_id),x]))
+  setLines((l??[]).map(x=>{const st=m.get(s(x.item_id));const available=Math.max(0,n(st?.available_stock));const it=items.find(i=>s(i.id)===s(x.item_id));return{...x,itemName:s(it?.name),itemCode:s(it?.item_code||it?.business_code),available,shortfall:Math.max(0,n(x.ordered_quantity)-Math.min(n(x.ordered_quantity),available))}}))
+  setBatches(b??[])
+  const ids=(b??[]).map(x=>s(x.id))
+  if(ids.length){
+   const{data:p,error:pe}=await sb.from('production_batch_plan_lines').select('id,production_batch_id,ingredient_item_id,planned_quantity,unit_id,created_at').in('production_batch_id',ids).order('created_at')
+   if(pe){setErr(true);setMsg(pe.message);return}
+   const pm:Record<string,R[]>={};for(const x of p??[])pm[s(x.production_batch_id)]=[...(pm[s(x.production_batch_id)]??[]),x];setPlans(pm)
+  }else setPlans({})
+ }
+
+ const saveDispatchDate=async()=>{
+  if(!selected||!dispatchDate){setErr(true);setMsg('Select an estimated dispatch date.');return}
+  setBusy('dispatch-date');const{error:e}=await db().rpc('set_order_estimated_dispatch_date',{p_order_id:selected.id,p_estimated_dispatch_date:dispatchDate});setBusy('')
+  if(e){setErr(true);setMsg(e.message);return}
+  const updated={...selected,estimated_dispatch_date:dispatchDate};setSelected(updated);setErr(false);setMsg('Estimated dispatch date saved.');await load();setRefresh(x=>x+1)
+ }
+
+ const prepare=async()=>{if(!selected)return;const selections=lines.filter(l=>n(l.shortfall)>0).map(l=>({order_line_id:l.id,recipe_version_id:choice[s(l.id)]||''}));if(selections.some(x=>!x.recipe_version_id)){setErr(true);setMsg('Select a recipe version for every item requiring production.');return}setBusy('prepare');const{error:e}=await db().rpc('prepare_order_plan',{p_order_id:selected.id,p_recipe_selections:selections});setBusy('');if(e){setErr(true);setMsg(e.message);return}setErr(false);setMsg('Production plan prepared. Wife approval is still required.');await openOrder(selected);setRefresh(x=>x+1)}
+ const approve=async(b:R)=>{setBusy(s(b.id));const{error:e}=await db().rpc('approve_production_batch',{p_production_batch_id:b.id});setBusy('');if(e){setErr(true);setMsg(e.message);return}setErr(false);setMsg(`${s(b.business_code)} approved by wife.`);await openOrder(selected!);setRefresh(x=>x+1)}
+ const confirm=async()=>{if(!selected)return;setBusy('confirm');const{error:e}=await db().rpc('confirm_order',{p_order_id:selected.id});setBusy('');if(e){setErr(true);setMsg(e.message);return}setErr(false);setMsg('Order confirmed. Production can now start.');await load();await openOrder({...selected,status:'confirmed'});setRefresh(x=>x+1)}
+ const revisePlan=async(b:R)=>{const id=s(b.id),x=extra[id]||{};const selectedRecipe=choice[s(b.order_line_id)]||s(b.recipe_version_id);const additional=x.item&&n(x.qty)>0?[{ingredient_item_id:x.item,quantity:n(x.qty),unit_id:items.find(i=>s(i.id)===x.item)?.base_unit_id}]:[];if(additional.length&&!additional[0].unit_id){setErr(true);setMsg('Selected material has no base unit configured.');return}if(x.mode==='permanent'&&selectedRecipe===s(b.recipe_version_id)&&!additional.length){setErr(true);setMsg('Choose another recipe or add a raw material for a permanent change.');return}setBusy(id);const{error:e}=await db().rpc('revise_production_plan',{p_production_batch_id:b.id,p_recipe_version_id:selectedRecipe,p_additional_ingredients:additional,p_permanent_recipe_change:x.mode==='permanent'});setBusy('');if(e){setErr(true);setMsg(e.message);return}setErr(false);setMsg(x.mode==='permanent'?'New recipe version saved and applied.':'Production plan updated for this batch only.');setExtra(z=>({...z,[id]:{item:'',qty:'',mode:'one_time'}}));await openOrder(selected!)}
+ const saveOrder=async()=>{const valid=orderLines.filter(l=>l.itemId&&n(l.qty)>0);if(!customer||!valid.length){setErr(true);setMsg('Customer and at least one item with a positive quantity are required.');return}if(valid.some(l=>n(l.rate)<0)){setErr(true);setMsg('Selling rate cannot be negative.');return}setBusy('new');const{error:e}=await db().rpc('create_order_entry_session',{p_orders:[{customer_id:customer,order_party_type:'direct',order_date:orderDate,source,advance_amount:n(advance),advance_payment_method:n(advance)>0?advanceMethod:null,lines:valid.map(l=>({item_id:l.itemId,ordered_quantity:n(l.qty),selling_rate:n(l.rate)}))}]});setBusy('');if(e){setErr(true);setMsg(e.message);return}setNewOrder(false);setCustomer('');setOrderLines([{itemId:'',qty:'',rate:''}]);setAdvance('');setMsg('Received order created.');await load();setRefresh(x=>x+1)}
+
+ return <section className="page-panel">
+  <div className="section-label">Mane Masala</div>
+  <div className="master-header"><div><h1>Orders</h1><p className="page-intro">Open a Business Code to review the complete transaction. Production planning stays inside the order workflow.</p></div><button className="primary-button" onClick={()=>{setNewOrder(true);setErr(false);setMsg('')}}>+ Create Order</button></div>
+  <div className="console-panel"><div className="panel-heading"><h2>Orders awaiting action</h2><span>{orders.filter(o=>['received','production_planned'].includes(s(o.status))).length} open</span></div>{orders.filter(o=>['received','production_planned'].includes(s(o.status))).map(o=><div className="workflow-row" key={s(o.id)}><div><a className="table-link" href="#" onClick={e=>{e.preventDefault();void openOrder(o)}}>{s(o.business_code)}</a><span>{s(o.billing_customer_name)} · {s(o.status)}</span></div><button className="secondary-button" onClick={()=>void openOrder(o)}>Review plan</button></div>)}{!orders.some(o=>['received','production_planned'].includes(s(o.status)))&&<p className="table-message">No orders currently awaiting action.</p>}</div>
+  <div className="console-panel"><div className="panel-heading"><h2>All orders</h2></div><DataTable table="v_orders_list" refreshToken={refresh} linkColumns={['business_code']} onRowOpen={openOrder}/></div>
+
+  {newOrder&&<div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><h3>Create received order</h3><button className="secondary-button" onClick={()=>setNewOrder(false)}>Cancel</button></div><div className="form-grid">
+   <Field label="Customer"><select value={customer} onChange={e=>setCustomer(e.target.value)}><option value="">Select customer...</option>{customers.map(c=><option key={s(c.id)} value={s(c.id)}>{s(c.name)} — {s(c.business_code)}</option>)}</select></Field>
+   <Field label="Order date"><input type="date" value={orderDate} onChange={e=>setOrderDate(e.target.value)}/></Field>
+   <Field label="Order source"><select value={source} onChange={e=>setSource(e.target.value)}><option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="walk_in">Walk-in</option><option value="sms">SMS</option><option value="social_media">Social Media</option><option value="online_marketplace">Online Marketplace</option></select></Field>
+  </div><div className="section-divider"/><div className="panel-heading"><h4>Order items</h4><span>Add multiple items in the same customer call.</span></div><div className="table-wrap"><table><thead><tr><th>Item</th><th>Quantity</th><th>Rate</th><th></th></tr></thead><tbody>{orderLines.map((l,i)=><tr key={i}><td><select value={l.itemId} onChange={e=>setOrderLines(v=>v.map((x,j)=>j===i?{...x,itemId:e.target.value}:x))}><option value="">Select item...</option>{items.filter(x=>x.can_be_sold!==false).map(x=><option key={s(x.id)} value={s(x.id)}>{s(x.item_code||x.business_code)} — {s(x.name)}</option>)}</select></td><td><input type="number" min="0" step="0.001" value={l.qty} placeholder="0.000 — quantity" onChange={e=>setOrderLines(v=>v.map((x,j)=>j===i?{...x,qty:e.target.value}:x))}/></td><td><input type="number" min="0" step="0.01" value={l.rate} placeholder="₹ 0.00 — rate per unit" onChange={e=>setOrderLines(v=>v.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}/></td><td><button className="line-remove" disabled={orderLines.length===1} onClick={()=>setOrderLines(v=>v.filter((_,j)=>j!==i))}>Remove</button></td></tr>)}</tbody></table></div><button className="add-row-button" onClick={()=>setOrderLines(v=>[...v,{itemId:'',qty:'',rate:''}])}>+ Add item</button><div className="form-grid" style={{marginTop:14}}><Field label="Advance received"><input type="number" min="0" step="0.01" value={advance} placeholder="₹ 0.00 — advance received" onChange={e=>setAdvance(e.target.value)}/></Field>{n(advance)>0&&<Field label="Advance payment method"><select value={advanceMethod} onChange={e=>setAdvanceMethod(e.target.value)}><option value="upi">UPI</option><option value="cash">Cash</option><option value="other">Other</option></select></Field>}</div><div className="workflow-actions"><button className="primary-button" disabled={busy==='new'} onClick={saveOrder}>{busy==='new'?'Saving…':'Save received order'}</button></div><Status message={msg} error={err}/></div></div>}
+
+  {selected&&<div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><div><h3>Order {s(selected.business_code)}</h3><span className="status-pill">{s(selected.status)}</span></div><button className="secondary-button" onClick={()=>setSelected(null)}>Close</button></div>
+   <div className="form-grid">
+    <Field label="Billing customer"><input value={s(selected.billing_customer_name)} readOnly/></Field>
+    <Field label="Order date"><input type="date" value={s(selected.order_date)} readOnly/></Field>
+    <Field label="Estimated dispatch date"><div className="inline-field"><input type="date" value={dispatchDate} min={s(selected.order_date)} onChange={e=>setDispatchDate(e.target.value)} aria-label="Estimated dispatch date"/><button className="secondary-button" disabled={busy==='dispatch-date'||!dispatchDate||dispatchDate===s(selected.estimated_dispatch_date)} onClick={saveDispatchDate}>{busy==='dispatch-date'?'Saving…':'Save date'}</button></div></Field>
+   </div>
+   <div className="section-divider"/><div className="panel-heading"><h3>Order fulfilment</h3><span>Stock and production are shown together.</span></div>
+   <div className="table-wrap"><table><thead><tr><th>Item</th><th>Ordered</th><th>Available stock</th><th>Production needed</th><th>Recipe</th></tr></thead><tbody>{lines.map(l=><tr key={s(l.id)}><td><strong>{s(l.itemCode)}</strong><br/>{s(l.itemName)}</td><td className="num">{n(l.ordered_quantity)} {unit(s(l.unit_id))}</td><td className="num">{n(l.available)}</td><td className="num">{n(l.shortfall)}</td><td>{n(l.shortfall)>0?<select value={choice[s(l.id)]||''} onChange={e=>setChoice(v=>({...v,[s(l.id)]:e.target.value}))}><option value="">Select recipe...</option>{versions.filter(v=>recipes.some(r=>s(r.id)===s(v.recipe_id)&&s(r.output_item_id)===s(l.item_id))).map(v=><option key={s(v.id)} value={s(v.id)}>{recipeName(s(v.id))}</option>)}</select>:<span className="muted">Stock covers order</span>}</td></tr>)}</tbody></table></div>
+   {lines.some(l=>n(l.shortfall)>0)&&<div className="workflow-actions"><button className="primary-button" disabled={busy==='prepare'} onClick={prepare}>{busy==='prepare'?'Preparing…':'Prepare / recalculate production plan'}</button></div>}
+   {batches.map(b=>{const id=s(b.id);const lrn=learning[s(b.recipe_version_id)];const planned=n(b.planned_output_quantity);const standard=n(lrn?.recipe_expected_output||planned);const learned=standard>0?n(lrn?.learned_expected_output||standard)*planned/standard:planned;const pendingApproval=s(b.wife_approval_status)!=='approved';const optionList=versions.filter(v=>recipes.some(r=>s(r.id)===s(v.recipe_id)&&s(r.output_item_id)===s(b.output_item_id)));const ex=extra[id]||{item:'',qty:'',mode:'one_time'};const plan=plans[id]||[];return <div className="console-panel" key={id}>
+    <div className="panel-heading"><div><h3>Production Plan — Wife Review</h3><span>{s(b.business_code)} · {pendingApproval?'Approval pending':'Approved'}</span></div><span className="status-pill">{s(b.status)}</span></div>
+    <div className="plan-summary"><div><small>Recipe</small><strong>{recipeName(s(b.recipe_version_id))}</strong></div><div><small>Production target</small><strong>{planned} {unit(s(b.output_unit_id))}</strong></div><div><small>Learned estimate</small><strong>{learned.toFixed(3)} {unit(s(b.output_unit_id))}</strong><small>{n(lrn?.completed_batches||0)} completed batch{n(lrn?.completed_batches||0)===1?'':'es'}</small></div></div>
+    <div className="table-wrap"><table className="production-plan-table"><thead><tr><th>Ingredient</th><th>Planned quantity</th><th>Unit</th></tr></thead><tbody>{plan.map(p=><tr key={s(p.id)}><td>{itemName(s(p.ingredient_item_id))}</td><td className="num">{n(p.planned_quantity)}</td><td>{unit(s(p.unit_id))}</td></tr>)}{!plan.length&&<tr><td colSpan={3} className="table-message">No ingredient lines found.</td></tr>}</tbody></table></div>
+    <div className="plan-standard"><span>Recipe standard expected output</span><strong>{standard} {unit(s(b.output_unit_id))}</strong></div>
+    {pendingApproval&&<><div className="section-divider"/><div className="panel-heading"><h4>Change recipe or add raw material</h4><span>Only available while approval is pending.</span></div><div className="form-grid">
+      <Field label="Recipe choice"><select value={choice[s(b.order_line_id)]||s(b.recipe_version_id)} onChange={e=>setChoice(v=>({...v,[s(b.order_line_id)]:e.target.value}))}>{optionList.map(v=><option key={s(v.id)} value={s(v.id)}>{recipeName(s(v.id))}</option>)}</select></Field>
+      <Field label="Additional raw material"><select value={ex.item} onChange={e=>setExtra(z=>({...z,[id]:{...ex,item:e.target.value}}))}><option value="">None</option>{items.filter(x=>x.can_be_purchased!==false).map(x=><option key={s(x.id)} value={s(x.id)}>{s(x.item_code||x.business_code)} — {s(x.name)}</option>)}</select></Field>
+      <Field label="Additional quantity"><input type="number" min="0" step="0.001" value={ex.qty} placeholder="0.000 — enter the unit shown" onChange={e=>setExtra(z=>({...z,[id]:{...ex,qty:e.target.value}}))}/></Field>
+      <Field label="Save as"><select value={ex.mode} onChange={e=>setExtra(z=>({...z,[id]:{...ex,mode:e.target.value}}))}><option value="one_time">One time — this batch only</option><option value="permanent">Permanent — create new recipe version</option></select></Field>
+    </div><div className="workflow-actions"><button className="secondary-button" disabled={busy===id} onClick={()=>revisePlan(b)}>{ex.mode==='permanent'?'Save new recipe & update plan':'Update this plan only'}</button><button className="primary-button" disabled={busy===s(b.id)} onClick={()=>approve(b)}>{busy===s(b.id)?'Approving…':'Wife approve production plan'}</button></div></>}
+    {!pendingApproval&&<div className="workflow-actions"><button className="primary-button" disabled={busy==='confirm'} onClick={confirm}>{busy==='confirm'?'Confirming…':'Confirm order'}</button></div>}
+   </div>})}
+   <Status message={msg} error={err}/>
+  </div></div>}
+ </section>
+}
