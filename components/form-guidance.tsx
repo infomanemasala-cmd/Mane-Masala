@@ -94,7 +94,12 @@ export default function FormGuidance() {
       if (/additional\s+quantity/i.test(lower)) {
         const candidate = itemSelectsIn(field)[0]
         unit = unit || (candidate ? selectedItemUnit(candidate) : '')
-        if (unit && span) span.textContent = `Additional quantity (${normaliseUnit(unit)})`
+        if (unit && span) {
+          const nextLabel = `Additional quantity (${normaliseUnit(unit)})`
+          // MutationObserver watches childList changes. Do not rewrite identical
+          // label text or the observer will continuously trigger itself.
+          if (span.textContent !== nextLabel) span.textContent = nextLabel
+        }
       }
 
       let hint = ''
