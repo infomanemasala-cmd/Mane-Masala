@@ -1,3 +1,2 @@
-import OrdersPartialReviewV3 from '@/components/orders-partial-review-v3'
-
-export default function OrdersPartialPage(){return <OrdersPartialReviewV3/>}
+import OrdersConsoleV4 from '@/components/orders-console-v4'
+export default function OrdersPartialPage(){return <OrdersConsoleV4 partialOnly/>}
