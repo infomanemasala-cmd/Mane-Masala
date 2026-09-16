@@ -1,2 +1,2 @@
-import OrdersConsoleV4 from '@/components/orders-console-v4'
-export default function OrdersPartialPage(){return <OrdersConsoleV4 partialOnly/>}
+import OrdersConsoleV5 from '@/components/orders-console-v5'
+export default function OrdersPartialPage(){return <OrdersConsoleV5 partialOnly/>}
