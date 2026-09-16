@@ -1,1 +1,1 @@
-export { default } from '@/components/orders-console-v4'
+export { default } from '@/components/orders-console-v5'
