@@ -63,6 +63,7 @@ export default function FormGuidance() {
   useEffect(() => {
     let cancelled = false
     const sb = createClient()
+    const selectSearch = new WeakMap<HTMLSelectElement, { buffer: string; at: number }>()
 
     const selectedItemUnit = (select: HTMLSelectElement) => {
       const id = select.value
@@ -166,28 +167,39 @@ export default function FormGuidance() {
       apply()
     }
 
-    const loadUnits = async () => {
-      const [{ data: items }, { data: units }] = await Promise.all([
-        sb.from('items').select('id,base_unit_id').eq('is_active', true),
-        sb.from('units').select('id,symbol,name').eq('is_active', true),
-      ])
-      if (cancelled) return
-      const um = new Map((units || []).map((u: any) => {
-        const raw = String(u.symbol || u.name || '')
-        return [String(u.id), { symbol: normaliseUnit(raw), label: String(u.name || raw) }]
-      }))
-      for (const item of items || []) {
-        const id = String(item.id)
-        const base = String(item.base_unit_id || '')
-        const info = um.get(base)
-        cache.current.set(id, { unitId: base, symbol: info?.symbol || '', label: info?.label || '' })
+    const searchDropdownByCodeOrName = (event: KeyboardEvent) => {
+      const select = event.target instanceof HTMLSelectElement ? event.target : null
+      if (!select || select.disabled) return
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Tab', 'Home', 'End', 'PageUp', 'PageDown', ' ', 'Backspace', 'Delete'].includes(event.key)) return
+      if (event.key.length !== 1) return
+
+      const now = Date.now()
+      const state = selectSearch.get(select) || { buffer: '', at: 0 }
+      const buffer = now - state.at > 750 ? event.key : state.buffer + event.key
+      const query = buffer.trim().toLowerCase()
+      if (!query) return
+
+      const options = [...select.options].filter(option => !option.disabled && option.value)
+      const match = options.find(option => option.textContent?.toLowerCase().includes(query))
+      if (!match) {
+        selectSearch.set(select, { buffer: event.key, at: now })
+        return
       }
-      apply()
+
+      selectSearch.set(select, { buffer, at: now })
+      event.preventDefault()
+      event.stopPropagation()
+      if (select.value !== match.value) {
+        select.value = match.value
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+      }
     }
 
     apply()
     void loadUnits()
     document.addEventListener('change', refreshFromSelection, true)
+    document.addEventListener('keydown', searchDropdownByCodeOrName, true)
     const observer = new MutationObserver(apply)
     observer.observe(document.body, { subtree: true, childList: true })
 
@@ -195,6 +207,7 @@ export default function FormGuidance() {
       cancelled = true
       observer.disconnect()
       document.removeEventListener('change', refreshFromSelection, true)
+      document.removeEventListener('keydown', searchDropdownByCodeOrName, true)
     }
   }, [])
 
