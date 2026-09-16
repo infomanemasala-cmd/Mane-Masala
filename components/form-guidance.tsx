@@ -196,6 +196,25 @@ export default function FormGuidance() {
       }
     }
 
+    const loadUnits = async () => {
+      const [{ data: items }, { data: units }] = await Promise.all([
+        sb.from('items').select('id,base_unit_id').eq('is_active', true),
+        sb.from('units').select('id,symbol,name').eq('is_active', true),
+      ])
+      if (cancelled) return
+      const um = new Map((units || []).map((u: any) => {
+        const raw = String(u.symbol || u.name || '')
+        return [String(u.id), { symbol: normaliseUnit(raw), label: String(u.name || raw) }]
+      }))
+      for (const item of items || []) {
+        const id = String(item.id)
+        const base = String(item.base_unit_id || '')
+        const info = um.get(base)
+        cache.current.set(id, { unitId: base, symbol: info?.symbol || '', label: info?.label || '' })
+      }
+      apply()
+    }
+
     apply()
     void loadUnits()
     document.addEventListener('change', refreshFromSelection, true)
