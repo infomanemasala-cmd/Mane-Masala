@@ -29,10 +29,11 @@ export default function InventoryConsoleV2() {
   const [saving, setSaving] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
 
-  const load = async () => {
+  async function load() {
+    const client = sb()
     const [{ data: itemRows }, { data: unitRows }] = await Promise.all([
-      sb().from('items').select('*').eq('is_active', true).order('name'),
-      sb().from('units').select('id,code,name,symbol,base_unit_id,conversion_to_base').eq('is_active', true).order('name')
+      client.from('items').select('*').eq('is_active', true).order('name'),
+      client.from('units').select('*').eq('is_active', true).order('name'),
     ])
     setItems(itemRows ?? []); setUnits(unitRows ?? [])
   }
@@ -40,36 +41,22 @@ export default function InventoryConsoleV2() {
 
   const selectedItem = items.find(i => txt(i.id) === itemId)
   const selectedUnit = units.find(u => txt(u.id) === unitId)
-
-  const chooseItem = (id: string) => {
-    setItemId(id)
-    const item = items.find(i => txt(i.id) === id)
-    setUnitId(txt(item?.base_unit_id || ''))
-    if (reason === 'production') setProductionItemId(id)
-  }
-
-  const reset = () => {
-    setOpen(false); setKind('out'); setItemId(''); setUnitId(''); setQuantity(''); setReason('damage'); setProductionItemId(''); setNotes(''); setMessage(''); setError(false)
-  }
-
+  const reset = () => { setOpen(false); setItemId(''); setUnitId(''); setQuantity(''); setReason('damage'); setProductionItemId(''); setNotes(''); setMessage(''); setError(false) }
+  const chooseItem = (id: string) => { setItemId(id); const item = items.find(i => txt(i.id) === id); setUnitId(txt(item?.base_unit_id)); }
+  const openAction = () => { setOpen(true); setMessage(''); setError(false) }
   const submit = async () => {
-    const n = Number(quantity)
-    if (!itemId || !unitId || !Number.isFinite(n) || n === 0) { setError(true); setMessage('Item, standard unit of measure and a non-zero quantity are required.'); return }
-    if (reason === 'production' && !productionItemId) { setError(true); setMessage('Select the production item before recording this movement.'); return }
-    setSaving(true); setError(false); setMessage('')
-    const productionNote = reason === 'production' ? `Production item: ${txt(items.find(i => txt(i.id) === productionItemId)?.item_code || productionItemId)}` : ''
-    const finalNotes = [productionNote, notes.trim()].filter(Boolean).join(' — ') || null
+    if (!itemId || !unitId || Number(quantity) <= 0) { setError(true); setMessage('Select an item and unit, then enter a quantity greater than zero.'); return }
+    setSaving(true); setMessage(''); setError(false)
+    const client = sb()
     const rpc = kind === 'out' ? 'record_stock_out' : 'record_stock_adjustment'
-    const args = kind === 'out'
-      ? { p_item_id: itemId, p_quantity: n, p_unit_id: unitId, p_stock_out_date: today(), p_reason: reason, p_notes: finalNotes }
-      : { p_item_id: itemId, p_quantity_delta: n, p_unit_id: unitId, p_adjustment_date: today(), p_reason: reason, p_notes: finalNotes }
-    const { error: e } = await sb().rpc(rpc, args)
+    const payload = kind === 'out'
+      ? { p_item_id: itemId, p_quantity: Number(quantity), p_unit_id: unitId, p_reason: reason, p_notes: notes || null }
+      : { p_item_id: itemId, p_quantity: Number(quantity), p_unit_id: unitId, p_reason: reason, p_notes: notes || null }
+    const { error: e } = await client.rpc(rpc, payload)
     setSaving(false)
     if (e) { setError(true); setMessage(e.message); return }
-    setRefreshToken(v => v + 1); reset(); setMessage(kind === 'out' ? 'Stock Out recorded using FIFO.' : 'Stock Adjustment recorded.')
+    setError(false); setMessage(kind === 'out' ? 'Stock Out recorded.' : 'Stock Adjustment recorded.'); setRefreshToken(v => v + 1); reset()
   }
-
-  const openAction = () => { setOpen(true); setMessage(''); setError(false) }
 
   return <section className="page-panel">
     <div className="section-label">Mane Masala</div>
@@ -82,7 +69,7 @@ export default function InventoryConsoleV2() {
         <Field label={kind==='out'?'Quantity':'Adjustment (+ adds / − removes)'}><input type="number" step="0.001" value={quantity} onChange={e=>setQuantity(e.target.value)}/></Field>
         <Field label="Reason"><select value={reason} onChange={e=>{setReason(e.target.value);if(e.target.value==='production'&&!productionItemId)setProductionItemId(itemId)}}><option value="damage">Damage</option><option value="expiry">Expiry</option><option value="sample">Sample</option><option value="wastage">Wastage</option><option value="personal_use">Personal use</option><option value="production">Production</option><option value="correction">Adjustment</option><option value="other">Other</option></select></Field>
       </div>
-      {itemId && <div className="unit-standard-note"><strong>Standard unit:</strong> {txt(selectedUnit?.name)} ({txt(selectedUnit?.symbol)}). This is taken from the item's defined base unit and is used for the stock movement.</div>}
+      {itemId && <div className="unit-standard-note"><strong>Standard unit:</strong> {txt(selectedUnit?.name)} ({txt(selectedUnit?.symbol)}). This is taken from the item&apos;s defined base unit and is used for the stock movement.</div>}
       {reason==='production' && <div className="production-linked-box"><Field label="Production item"><select value={productionItemId} onChange={e=>setProductionItemId(e.target.value)}><option value="">Select production item</option>{items.filter(i=>i.is_active !== false).map(i=><option key={txt(i.id)} value={txt(i.id)}>{txt(i.item_code)} — {txt(i.name)}</option>)}</select></Field><p className="muted">Production reason selected: choose the item this movement belongs to. The list is always taken from the Item master.</p></div>}
       <Field label="Notes"><textarea value={notes} onChange={e=>setNotes(e.target.value)}/></Field><Status message={message} error={error}/><div className="purchase-actions"><button className="secondary-button" type="button" onClick={reset}>Cancel</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving?'Recording…':'Record Stock Action'}</button></div>
     </Modal>}
