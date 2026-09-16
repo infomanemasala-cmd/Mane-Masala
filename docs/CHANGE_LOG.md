@@ -36,6 +36,17 @@ The exact Master State v1.4 is preserved in the persistent Project Library as `M
 - User requested purchase-flow refinement: supplier/user forms must show business names and user-relevant fields, not raw database IDs; system generates the Purchase No.; supplier slip/bill reference is a separate optional physical-document reference.
 - User requested line-level purchase receiving decisions: Received, Accepted, Rejected/Damaged, automatic shortage calculation, supplier response, credit/refund/dispute treatment and a complete breakdown summary.
 
+## 2026-09-16 integrated revalidation corrections
+- Rechecked the current production Orders screen against Master State v1.6 rather than treating the previous active component as authoritative.
+- Replaced the active `/orders` page's reduced operational console with a unified Order Intake + Planning screen implementing Direct/Sub-Agent entry, named/existing/anonymous end-customer traceability, multi-order entry sessions, multi-line orders, sellable product grouping, stock/reservation/available/shortfall planning, explicit recipe selection and wife-approved confirmation.
+- Preserved `/orders-partial` as the dedicated Order Fulfilment path for production, partial/mixed fulfilment and dispatch rather than deleting that workflow.
+- Added explicit `Products for Sale` tabs in Masters & Settings for Finished Products and Purchased Finished Products, backed by the live Item Master and the shared DataTable.
+- Extended the shared DataTable with typed server-side filters so operational filter controls actually filter the table/list itself rather than only a modal selector.
+- Applied those filters to Production for date range, batch, product, status and wife approval.
+- Re-ran the Supabase security advisor. Closed the safe anonymous-execution finding for `save_recipe_version` and changed `v_supplier_outstanding` to security-invoker because authenticated read policies already cover its source tables.
+- Recorded the remaining security findings as explicit release gates rather than blindly revoking intentionally used authenticated SECURITY DEFINER business RPCs.
+- Recorded the system-wide UI law and sellable-product separation as durable decisions in the Decision Register.
+
 ## Continuity package
 - Added `/AGENTS.md` for future coding agents.
 - Added `/VALIDATION_PROTOCOL.md` for independent technical/business validation.
