@@ -3,12 +3,14 @@
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import TransactionDetail from '@/components/transaction-detail'
+import PurchaseTransactionDetail from '@/components/purchase-transaction-detail'
 
 function TransactionContent(){
   const params=useSearchParams()
   const table=params.get('table')||''
   const id=params.get('id')||''
   if(!table||!id) return <section className="page-panel"><h1>Transaction</h1><p className="page-intro">Select a transaction from a list to open its complete details.</p></section>
+  if(table==='purchases'||table==='v_purchases_list') return <PurchaseTransactionDetail id={id}/>
   return <TransactionDetail table={table} id={id}/>
 }
 
