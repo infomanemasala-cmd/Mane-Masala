@@ -1,2 +1,2 @@
-import OrdersPartialReviewV2 from '@/components/orders-partial-review-v2'
-export default function OrdersPartialPage(){return <OrdersPartialReviewV2/>}
+import OrdersPartialReviewV3 from '@/components/orders-partial-review-v3'
+export default function OrdersPartialPage(){return <OrdersPartialReviewV3/>}
