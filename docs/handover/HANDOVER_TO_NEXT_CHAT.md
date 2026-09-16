@@ -3,7 +3,7 @@
 ## START HERE
 1. Read the current authoritative Master State **MM-BUSINESS-SPEC-1.6** in the Project Library.
 2. Read `/AGENTS.md` and `/VALIDATION_PROTOCOL.md`.
-3. Read `/docs/decisions/DECISION_REGISTER.md` and `/docs/handover/IMPLEMENTATION_GAP_REPORT.md`.
+3. Read `/docs/decisions/DECISION_REGISTER.md`, `/docs/phase4-integrated-revalidation-2026-09-16.md` and `/docs/handover/IMPLEMENTATION_GAP_REPORT.md`.
 4. Inspect the actual GitHub `main` source and current Supabase schema/functions/views before coding.
 5. Treat Phase 4 as **NOT CLEARED** until every release gate has evidence.
 
@@ -47,6 +47,19 @@ Purchase → Receive → Inspect → Accept / Shortage / Return → Inventory �
 - FIFO uses actual physical receipt/production dates.
 - History and permanent IDs are never deleted/rewritten to hide corrections.
 
+## System-wide UI law
+- Every list/table page uses the shared DataTable behaviour: server-backed search, count, pagination, sortable headers, useful business fields, permanent business codes, consistent search reset and consistent search interaction.
+- Forms use one clear primary action, plain language, safe defaults only, no unnecessary technical IDs, strong confirmation for important stock/financial actions and preserved context for nested master creation.
+- An approved rule for one page is a system-wide standard unless a documented business reason requires otherwise.
+- Production filters must filter the actual shared table, not merely a modal dropdown.
+
+## Product catalogue law
+- Controlled item types include Finished Product and Purchased Finished Product.
+- The previously verified master state contained 22 listed finished/purchased-finished products: 16 `finished_product` and 6 `purchased_finished_product`.
+- Product identity remains permanent; do not duplicate an item merely because it can be sold and/or used in production.
+- The application now exposes explicit Products for Sale tabs for Finished Products and Purchased Finished Products.
+- The live database is currently clean after disposable test-data cleanup; do not invent replacement master rows or classifications.
+
 ## Purchase-specific current decisions
 - System generates the permanent Purchase No.; the supplier/shopkeeper slip/bill reference is a separate optional reference captured from the physical document.
 - Purchase is multi-line and supplier is selected once.
@@ -59,6 +72,12 @@ Purchase → Receive → Inspect → Accept / Shortage / Return → Inventory �
 - Supplier refuses → original payable is not silently reduced; amount remains disputed and traceable.
 - Later replacement must link to the original purchase/purchase line.
 - Complete review must retain a line-level and document-level breakdown.
+
+## Order screen correction now in main
+- Active `/orders` is now `components/orders-console-unified.tsx`, not the previously reduced `OperationsConsoleFinal2` screen.
+- It implements Direct/Sub-Agent order party, existing/named/anonymous end-customer traceability, multi-order entry sessions, multi-line orders, sellable product grouping, stock/reserved/available/shortfall planning, explicit recipe version selection and wife-approved confirmation.
+- `/orders-partial` remains the dedicated fulfilment path for production, partial/mixed fulfilment and dispatch.
+- Do not revert `/orders` to the reduced console merely because it is shorter/easier.
 
 ## Order/partial approval current decisions
 - Multi-line orders are line-independent for production approval where business conditions permit.
@@ -77,19 +96,29 @@ Database-level transactional tests have covered customer order → recipe select
 
 The user has visually reviewed the partial-order review route and said it looked good to start. Do not treat this as full E2E evidence.
 
+## Latest revalidation corrections
+- Shared DataTable now supports typed server-side filters.
+- Production date/batch/product/status/wife-approval filters now apply to the actual production table.
+- Products for Sale tabs were added to Masters & Settings.
+- Active Orders screen was replaced with the unified intake/planning flow described above.
+- Safe Supabase security-lint corrections were applied: `v_supplier_outstanding` is now security-invoker and anonymous execution of `save_recipe_version` is revoked.
+- Durable revalidation record: `/docs/phase4-integrated-revalidation-2026-09-16.md`.
+
 ## Current known issues / release gates
 - Full authenticated browser E2E remains open unless freshly evidenced.
 - Mobile E2E remains open.
 - Page-by-page DataTable compliance remains open until verified.
 - Atomicity/idempotency needs evidence across critical actions.
 - Report reconciliation needs evidence against transaction tables/views.
-- Production demand linkage and order planning clarity need final verification.
+- Customer-return workflow remains a gap: customer return tables exist, but no dedicated customer-return RPC was found in the live public routine inventory.
 - Final logo/branding visibility needs verification.
 - Final production runtime-error check must be performed on the current deployment.
 - Exact financial-year numbering, GST details, packaging conversion mechanics, detailed permissions, invoice visual design, expiry threshold, negative-stock exceptions and intermediate classification remain OPEN unless separately approved.
+- Supabase security advisor still reports 40 authenticated SECURITY DEFINER functions for grouped authorization review and leaked-password protection is disabled.
+- Exact restoration of the previously verified 105 master records remains pending; do not guess the 16 FP / 6 PFP mapping or opening stock.
 
 ## Do not redesign
 Do not casually redesign approved business logic, stock ownership, FIFO, reservation semantics, order timing, recipe versioning, permanent IDs, historical preservation, payment allocations or the Dispatch → Sale → Invoice ownership model.
 
 ## Immediate next action
-Perform the final integrated Phase 4 audit using current `main` + current READY production deployment: inspect actual schema/functions/source, verify the purchase flow and current Orders flow, execute controlled authenticated E2E scenarios, verify mobile operational flows, reconcile stock/FIFO/financial values, fix defects, rebuild/redeploy, retest, then only if all gates pass mark Phase 4 cleared.
+Perform the final integrated Phase 4 audit using current `main` + current READY production deployment: authenticate through the real browser/UI, restore only exact approved master data, execute the full order/purchase/customer-return/payment/reconciliation scenarios, verify mobile flows, review remaining security findings, fix defects, rebuild/redeploy, retest, then only if every gate passes mark Phase 4 cleared.
