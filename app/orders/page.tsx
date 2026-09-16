@@ -1,5 +1,5 @@
-import OrdersConsoleUnified from '@/components/orders-console-unified'
+import OrdersConsoleUnifiedV2 from '@/components/orders-console-unified-v2'
 
 export default function OrdersPage() {
-  return <OrdersConsoleUnified />
+  return <OrdersConsoleUnifiedV2 />
 }
