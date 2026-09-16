@@ -232,6 +232,24 @@ This register records decisions recovered from the authoritative Master States a
 - Affected modules: System-wide
 - Implementation dependency: Future phases
 
+## D-026 — System-wide UI law
+- Date/Stage: Phase 4 deep UX/workflow audit
+- Topic: UI standardization
+- Decision: A rule approved for one page is a system-wide standard unless a documented business reason requires otherwise. All list/table pages use the shared DataTable behaviour: server-backed search, result count, pagination, sortable headers, useful business fields, permanent business codes where relevant, consistent search reset and the same search interaction. Forms use one clear primary action, clear section headings, safe defaults only, no unnecessary technical IDs, confirmation for important stock/financial actions, plain-language errors, and preserved context for nested creation. Related-master creation must be reused across relevant workflows.
+- Status: APPROVED
+- Reason: Explicit v1.5/v1.6 UI standard and Purchase reference-pattern decision.
+- Affected modules: Masters, Purchases, Inventory, Production, Orders, Sales & Invoices, Payments, Reports
+- Implementation dependency: Phase 4 page-by-page audit
+
+## D-027 — Sellable product type separation
+- Date/Stage: Phase 3C / Phase 4 UI audit
+- Topic: Product catalogue
+- Decision: Finished Product and Purchased Finished Product are distinct controlled item types. Sellable item identity remains one permanent item record; the application should make the two sellable categories visibly selectable/listable rather than hiding the distinction in a generic item dropdown.
+- Status: APPROVED
+- Reason: Controlled item-type model in Master State v1.6 plus the system-wide UI visibility requirement.
+- Affected modules: Masters, Orders, Purchases, Inventory, Sales & Invoices
+- Implementation dependency: Phase 4 UI audit
+
 ## OPEN-001 — Exact financial-year numbering/reset
 - Date/Stage: Phase 3C
 - Topic: Numbering
@@ -321,3 +339,21 @@ This register records decisions recovered from the authoritative Master States a
 - Reason: Code/deployment existence is not proof of business correctness.
 - Affected modules: System-wide
 - Implementation dependency: Phase 4 release audit
+
+## OPEN-011 — SECURITY DEFINER authorization review
+- Date/Stage: Phase 4 security audit
+- Topic: Database authorization
+- Decision: The security advisor currently reports 40 SECURITY DEFINER functions executable by authenticated users. These may be intentional application RPCs, but their authorization checks and execute grants must be reviewed as a group before final release. Do not blindly revoke access because the linter warns on intentional business RPCs.
+- Status: OPEN
+- Reason: Security advisor finding observed on 2026-09-16.
+- Affected modules: System-wide database functions
+- Implementation dependency: Phase 4 security review
+
+## OPEN-012 — Auth leaked-password protection
+- Date/Stage: Phase 4 security audit
+- Topic: Authentication security
+- Decision: Supabase Auth leaked-password protection is currently disabled and must be enabled before final release if the project configuration permits it.
+- Status: OPEN
+- Reason: Security advisor finding observed on 2026-09-16.
+- Affected modules: Authentication
+- Implementation dependency: Auth/security settings
