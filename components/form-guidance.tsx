@@ -3,131 +3,201 @@
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+type UnitInfo = { unitId: string; symbol: string; label: string }
+
 const GENERIC_PLACEHOLDERS = new Set([
-  '0.000','0.00','0.000 kg','0.000 g','0 Nos','0.000 — quantity in the unit shown',
-  '0.00 Quantity','0.00 quantity','Enter the value','Enter a short note','Enter a short description',
-  'Reference number','₹ 0.00'
+  '0.000', '0.00', '0.000 kg', '0.000 g', '0 Nos', '0.000 litre', '0.000 ml',
+  '0.000 — quantity in the unit shown', '0.00 Quantity', '0.00 quantity',
+  'Enter the value', 'Enter a short note', 'Enter a short description',
+  'Reference number', '₹ 0.00', '₹ 0.00 / kg', '₹ 0.00 / g',
 ])
 
-function unitFromText(text:string){
-  const t=text.toLowerCase()
+function normaliseUnit(value: string) {
+  const t = String(value || '').trim().toLowerCase()
+  if (t === 'kg' || t === 'kilogram' || t === 'kilograms') return 'kg'
+  if (t === 'g' || t === 'gram' || t === 'grams') return 'g'
+  if (t === 'ml' || t === 'millilitre' || t === 'milliliter' || t === 'millilitres' || t === 'milliliters') return 'ml'
+  if (t === 'l' || t === 'litre' || t === 'liter' || t === 'litres' || t === 'liters') return 'litre'
+  if (t === 'nos' || t === 'no' || t === 'number' || /piece|pieces/.test(t)) return 'Nos'
+  return String(value || '')
+}
+
+function unitFromText(text: string) {
+  const t = text.toLowerCase()
   if (/\bkg\b|kilogram/.test(t)) return 'kg'
-  if (/\bg\b|gram/.test(t)) return 'g'
+  if (/\bml\b|millilitre|milliliter/.test(t)) return 'ml'
+  if (/\blitre\b|\bliter\b|\blitres\b|\bliters\b/.test(t)) return 'litre'
   if (/\bnos\b|number of|pieces?/.test(t)) return 'Nos'
+  if (/\bg\b|gram/.test(t)) return 'g'
   return ''
 }
 
-function quantityHint(unit:string){
-  if(unit==='kg') return '0.000 kg'
-  if(unit==='g') return '0.000 g'
-  if(unit==='Nos') return '0 Nos'
-  return '0.000 — quantity in the unit shown'
+function quantityHint(unit: string) {
+  const u = normaliseUnit(unit)
+  if (u === 'kg') return '0.000 kg'
+  if (u === 'g') return '0.000 g'
+  if (u === 'ml') return '0.000 ml'
+  if (u === 'litre') return '0.000 litre'
+  if (u === 'Nos') return '0 Nos'
+  return '0.000 — select the item to show its unit'
 }
 
-function isGenericPlaceholder(value:string){
-  const v=value.trim()
+function rateHint(unit: string) {
+  const u = normaliseUnit(unit)
+  if (u === 'kg') return '₹ 0.00 / kg'
+  if (u === 'g') return '₹ 0.00 / g'
+  if (u === 'ml') return '₹ 0.00 / ml'
+  if (u === 'litre') return '₹ 0.00 / litre'
+  if (u === 'Nos') return '₹ 0.00 / Nos'
+  return '₹ 0.00'
+}
+
+function isGenericPlaceholder(value: string) {
+  const v = value.trim()
   return !v || GENERIC_PLACEHOLDERS.has(v) || /^enter\s/i.test(v) || /^0(?:\.0+)?\s*(quantity|qty)$/i.test(v)
 }
 
-export default function FormGuidance(){
-  const cache=useRef<Map<string,{unitId:string;symbol:string}>>(new Map())
-  useEffect(()=>{
-    let cancelled=false
-    const sb=createClient()
-    const loadUnits=async()=>{
-      const [{data:items},{data:units}]=await Promise.all([
-        sb.from('items').select('id,base_unit_id').eq('is_active',true),
-        sb.from('units').select('id,symbol,name').eq('is_active',true)
-      ])
-      if(cancelled) return
-      const um=new Map((units??[]).map((u:any)=>[String(u.id),String(u.symbol||u.name||'')]))
-      for(const item of items??[]) cache.current.set(String(item.id),{unitId:String(item.base_unit_id||''),symbol:um.get(String(item.base_unit_id||''))||''})
+export default function FormGuidance() {
+  const cache = useRef<Map<string, UnitInfo>>(new Map())
+
+  useEffect(() => {
+    let cancelled = false
+    const sb = createClient()
+
+    const selectedItemUnit = (select: HTMLSelectElement) => {
+      const id = select.value
+      if (!id) return ''
+      return cache.current.get(id)?.symbol || ''
+    }
+
+    const itemSelectsIn = (field: HTMLElement) => {
+      const scope = field.closest('.console-panel, .modal-card, form') || field.parentElement || field
+      return [...scope.querySelectorAll<HTMLSelectElement>('select')].filter(select => cache.current.has(select.value))
+    }
+
+    const applyField = (field: HTMLElement) => {
+      const span = field.querySelector('span')
+      const originalLabel = (span?.textContent || field.textContent || '').trim()
+      const labelForLogic = originalLabel.replace(/\s*\((?:kg|g|ml|litre|Nos)\)\s*$/i, '').trim()
+      const lower = labelForLogic.toLowerCase()
+      const input = field.querySelector<HTMLInputElement>('input:not([type="hidden"]):not([readonly]), textarea')
+      if (!input) return
+
+      const row = field.closest('tr')
+      let unit = unitFromText(`${labelForLogic} ${row?.textContent || ''}`)
+
+      if (!unit && /quantity|qty|output|consumption|actual|planned/i.test(lower)) {
+        const rowSelect = row?.querySelector<HTMLSelectElement>('select')
+        unit = rowSelect ? selectedItemUnit(rowSelect) : ''
+      }
+
+      if (/additional\s+quantity/i.test(lower)) {
+        // The selected raw-material/item select is the select whose value exists in the item master.
+        // Recipe/version selects do not match item IDs, so they are deliberately ignored.
+        const candidate = itemSelectsIn(field)[0]
+        unit = unit || (candidate ? selectedItemUnit(candidate) : '')
+        if (unit && span) span.textContent = `Additional quantity (${normaliseUnit(unit)})`
+      }
+
+      let hint = ''
+      if (lower.includes('date')) hint = 'DD-MM-YYYY'
+      else if (lower.includes('phone') || lower.includes('mobile')) hint = '10-digit mobile number'
+      else if (lower.includes('email')) hint = 'name@example.com'
+      else if (lower.includes('invoice')) hint = "Supplier's invoice number"
+      else if (lower.includes('reference') || lower === 'ref') hint = 'System generated if blank'
+      else if (lower.includes('rate')) hint = rateHint(unit)
+      else if (lower.includes('percent') || lower.includes('%') || lower.includes('tax')) hint = '0.00 %'
+      else if (lower.includes('amount') || lower.includes('price') || lower.includes('charge') || lower.includes('discount') || lower.includes('advance')) hint = '₹ 0.00'
+      else if (lower.includes('quantity') || lower.includes('qty') || lower.includes('output') || lower.includes('consumption') || lower.includes('actual') || lower.includes('planned')) hint = quantityHint(unit)
+      else if (lower.includes('code')) hint = 'Business / item code'
+      else if (lower.includes('address')) hint = 'House / street / area...'
+      else if (lower.includes('note') || lower.includes('remark') || lower.includes('reason')) hint = 'Enter a short note...'
+      else if (lower.includes('description')) hint = 'Enter a short description...'
+      else if (lower.includes('name')) hint = 'Enter name'
+      else if (input.type === 'number') hint = '0.00'
+
+      // Quantity/rate fields are always authoritative from the selected item unit.
+      // Never leave a stale generic placeholder after the user changes the selected item.
+      if (hint && (isGenericPlaceholder(input.placeholder || '') || /quantity|qty|rate|output|consumption|actual|planned/i.test(lower))) {
+        input.placeholder = hint
+      }
+
+      if (unit && /quantity|qty|output|consumption|actual|planned/i.test(lower)) {
+        const u = normaliseUnit(unit)
+        input.setAttribute('data-unit', u)
+        input.setAttribute('aria-label', `${labelForLogic} — enter quantity in ${u}`)
+        input.setAttribute('title', `Enter ${labelForLogic.toLowerCase()} in ${u}`)
+        if (input.type === 'number') input.step = u === 'Nos' ? '1' : '0.001'
+      }
+    }
+
+    const applyTableRow = (row: HTMLTableRowElement, headers: string[]) => {
+      const cells = [...row.cells]
+      cells.forEach((cell, i) => {
+        const input = cell.querySelector<HTMLInputElement>('input[type="number"]')
+        if (!input) return
+        const head = (headers[i] || cell.textContent || '').trim().toLowerCase()
+        if (!/quantity|qty|rate|amount|price|output|consumption|actual|planned/i.test(head)) return
+        const select = row.querySelector<HTMLSelectElement>('select')
+        const unit = select ? selectedItemUnit(select) : unitFromText(`${head} ${cell.textContent || ''}`)
+        if (/rate/.test(head)) input.placeholder = rateHint(unit)
+        else input.placeholder = quantityHint(unit)
+        if (unit) {
+          const u = normaliseUnit(unit)
+          input.setAttribute('data-unit', u)
+          input.setAttribute('aria-label', `${head} — enter in ${u}`)
+          input.setAttribute('title', `Enter ${head} in ${u}`)
+          input.step = u === 'Nos' ? '1' : '0.001'
+        }
+      })
+    }
+
+    const apply = () => {
+      document.querySelectorAll<HTMLElement>('.field, .form-field, .form-stack label').forEach(applyField)
+      document.querySelectorAll<HTMLTableElement>('table').forEach(table => {
+        const headers = [...table.querySelectorAll('thead th')].map(x => x.textContent || '')
+        table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row => applyTableRow(row, headers))
+      })
+    }
+
+    const refreshFromSelection = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLSelectElement)) return
+      // Selection changes are part of the data-entry logic. Re-apply immediately so the
+      // field instruction changes before the user types a value.
       apply()
     }
 
-    const selectedItemUnit=(select:HTMLSelectElement)=>{
-      const id=select.value
-      if(!id) return ''
-      return cache.current.get(id)?.symbol||''
+    const loadUnits = async () => {
+      const [{ data: items }, { data: units }] = await Promise.all([
+        sb.from('items').select('id,base_unit_id').eq('is_active', true),
+        sb.from('units').select('id,symbol,name').eq('is_active', true),
+      ])
+      if (cancelled) return
+      const um = new Map((units || []).map((u: any) => {
+        const raw = String(u.symbol || u.name || '')
+        return [String(u.id), { symbol: normaliseUnit(raw), label: String(u.name || raw) }]
+      }))
+      for (const item of items || []) {
+        const id = String(item.id)
+        const base = String(item.base_unit_id || '')
+        const info = um.get(base)
+        cache.current.set(id, { unitId: base, symbol: info?.symbol || '', label: info?.label || '' })
+      }
+      apply()
     }
 
-    const applyField=(field:HTMLElement)=>{
-      const label=(field.querySelector('span')?.textContent||field.textContent||'').trim()
-      const input=field.querySelector<HTMLInputElement>('input:not([type="hidden"]):not([readonly]), textarea')
-      if(!input) return
-      let context=label
-      const row=field.closest('tr')
-      if(row) context=`${row.textContent||''} ${context}`
-      let unit=unitFromText(context)
-      if(!unit && /quantity|qty|output|consumption/i.test(label)){
-        const select=row?.querySelector<HTMLSelectElement>('select')
-        unit=select?selectedItemUnit(select):''
-      }
-      if(/additional\s+quantity/i.test(label)){
-        const selects=[...field.closest('.console-panel,.modal-card,form')?.querySelectorAll<HTMLSelectElement>('select')||[]]
-        const candidate=selects.find(x=>x.value && cache.current.has(x.value))
-        unit=unit|| (candidate?selectedItemUnit(candidate):'')
-        if(unit){
-          const span=field.querySelector('span')
-          if(span && !/\(kg\)|\(g\)|\(Nos\)/i.test(span.textContent||'')) span.textContent=`Additional quantity (${unit})`
-        }
-      }
-      const existing=input.placeholder||''
-      const lower=label.toLowerCase()
-      let hint=''
-      if(lower.includes('date')) hint='DD-MM-YYYY'
-      else if(lower.includes('phone')||lower.includes('mobile')) hint='10-digit mobile number'
-      else if(lower.includes('email')) hint='name@example.com'
-      else if(lower.includes('invoice')) hint="Supplier's invoice number"
-      else if(lower.includes('reference')||lower.includes('ref')) hint='System generated if blank'
-      else if(lower.includes('rate')&&unit==='kg') hint='₹ 0.00 / kg'
-      else if(lower.includes('rate')&&unit==='g') hint='₹ 0.00 / g'
-      else if(lower.includes('rate')) hint='₹ 0.00'
-      else if(lower.includes('percent')||lower.includes('%')||lower.includes('tax')) hint='0.00 %'
-      else if(lower.includes('amount')||lower.includes('price')||lower.includes('charge')||lower.includes('discount')||lower.includes('advance')) hint='₹ 0.00'
-      else if(lower.includes('quantity')||lower.includes('qty')||lower.includes('output')||lower.includes('consumption')) hint=quantityHint(unit)
-      else if(lower.includes('code')) hint='Business / item code'
-      else if(lower.includes('address')) hint='House / street / area...'
-      else if(lower.includes('note')||lower.includes('remark')||lower.includes('reason')) hint='Enter a short note...'
-      else if(lower.includes('description')) hint='Enter a short description...'
-      else if(lower.includes('name')) hint='Enter name'
-      else if(input.type==='number') hint='0.00'
-      if(hint && (isGenericPlaceholder(existing)||/quantity/i.test(lower))) input.placeholder=hint
-      if(unit && (lower.includes('quantity')||lower.includes('qty')||lower.includes('output')||lower.includes('consumption'))){
-        input.setAttribute('data-unit',unit)
-        input.setAttribute('aria-label',`${label} — enter quantity in ${unit}`)
-        if(input.type==='number' && unit==='Nos') input.step='1'
-        else if(input.type==='number') input.step='0.001'
-      }
-    }
-
-    const applyTableRow=(row:HTMLTableRowElement,headers:string[])=>{
-      const cells=[...row.cells]
-      cells.forEach((cell,i)=>{
-        const input=cell.querySelector<HTMLInputElement>('input[type="number"]')
-        if(!input) return
-        const head=(headers[i]||cell.textContent||'').trim().toLowerCase()
-        if(!/quantity|qty|rate|amount|price|output|consumption|actual|planned/i.test(head)) return
-        const select=row.querySelector<HTMLSelectElement>('select')
-        const unit=select?selectedItemUnit(select):unitFromText(`${head} ${cell.textContent||''}`)
-        if(/rate/.test(head)) input.placeholder=unit==='kg'?'₹ 0.00 / kg':unit==='g'?'₹ 0.00 / g':'₹ 0.00'
-        else if(/quantity|qty|output|consumption|actual|planned/.test(head)) input.placeholder=quantityHint(unit)
-        if(unit){input.setAttribute('data-unit',unit);input.setAttribute('aria-label',`${head} — ${unit}`);if(unit==='Nos') input.step='1';else input.step='0.001'}
-      })
-    }
-
-    const apply=()=>{
-      document.querySelectorAll<HTMLElement>('.field, .form-field, .form-stack label').forEach(applyField)
-      document.querySelectorAll<HTMLTableElement>('table').forEach(table=>{
-        const headers=[...table.querySelectorAll('thead th')].map(x=>x.textContent||'')
-        table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row=>applyTableRow(row,headers))
-      })
-    }
     apply()
     void loadUnits()
-    const observer=new MutationObserver(apply)
-    observer.observe(document.body,{subtree:true,childList:true})
-    return()=>{cancelled=true;observer.disconnect()}
-  },[])
+    document.addEventListener('change', refreshFromSelection, true)
+    const observer = new MutationObserver(apply)
+    observer.observe(document.body, { subtree: true, childList: true })
+
+    return () => {
+      cancelled = true
+      observer.disconnect()
+      document.removeEventListener('change', refreshFromSelection, true)
+    }
+  }, [])
+
   return null
 }
