@@ -3,6 +3,7 @@ import Link from 'next/link'
 import './globals.css'
 import './phase4e.css'
 import './phase4f.css'
+import './phase4g.css'
 import ThemePicker from '@/components/theme-picker'
 
 export const metadata: Metadata = { title:'Mane Masala Business System', description:'Business management system for Mane Masala' }
