@@ -92,8 +92,6 @@ export default function FormGuidance() {
       }
 
       if (/additional\s+quantity/i.test(lower)) {
-        // The selected raw-material/item select is the select whose value exists in the item master.
-        // Recipe/version selects do not match item IDs, so they are deliberately ignored.
         const candidate = itemSelectsIn(field)[0]
         unit = unit || (candidate ? selectedItemUnit(candidate) : '')
         if (unit && span) span.textContent = `Additional quantity (${normaliseUnit(unit)})`
@@ -116,8 +114,6 @@ export default function FormGuidance() {
       else if (lower.includes('name')) hint = 'Enter name'
       else if (input.type === 'number') hint = '0.00'
 
-      // Quantity/rate fields are always authoritative from the selected item unit.
-      // Never leave a stale generic placeholder after the user changes the selected item.
       if (hint && (isGenericPlaceholder(input.placeholder || '') || /quantity|qty|rate|output|consumption|actual|planned/i.test(lower))) {
         input.placeholder = hint
       }
@@ -160,10 +156,8 @@ export default function FormGuidance() {
       })
     }
 
-    const refreshFromSelection = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLSelectElement)) return
-      // Selection changes are part of the data-entry logic. Re-apply immediately so the
-      // field instruction changes before the user types a value.
+    const refreshFromSelection = (event: Event) => {
+      if (!(event.target instanceof HTMLSelectElement)) return
       apply()
     }
 
