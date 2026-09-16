@@ -1,5 +1,5 @@
-import OperationsConsoleFinal2 from '@/components/operations-console-final2'
+import OrdersConsoleUnified from '@/components/orders-console-unified'
 
 export default function OrdersPage() {
-  return <OperationsConsoleFinal2 module="orders" />
+  return <OrdersConsoleUnified />
 }
