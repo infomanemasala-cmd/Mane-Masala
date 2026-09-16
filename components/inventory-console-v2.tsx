@@ -22,7 +22,6 @@ export default function InventoryConsoleV2() {
   const [unitId, setUnitId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [reason, setReason] = useState('damage')
-  const [productionItemId, setProductionItemId] = useState('')
   const [notes, setNotes] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState(false)
@@ -39,19 +38,19 @@ export default function InventoryConsoleV2() {
   }
   useEffect(() => { void load() }, [])
 
-  const selectedItem = items.find(i => txt(i.id) === itemId)
   const selectedUnit = units.find(u => txt(u.id) === unitId)
-  const reset = () => { setOpen(false); setItemId(''); setUnitId(''); setQuantity(''); setReason('damage'); setProductionItemId(''); setNotes(''); setMessage(''); setError(false) }
+  const reset = () => { setOpen(false); setItemId(''); setUnitId(''); setQuantity(''); setReason('damage'); setNotes(''); setMessage(''); setError(false) }
   const chooseItem = (id: string) => { setItemId(id); const item = items.find(i => txt(i.id) === id); setUnitId(txt(item?.base_unit_id)); }
   const openAction = () => { setOpen(true); setMessage(''); setError(false) }
   const submit = async () => {
-    if (!itemId || !unitId || Number(quantity) <= 0) { setError(true); setMessage('Select an item and unit, then enter a quantity greater than zero.'); return }
+    if (!itemId || !unitId || Number(quantity) === 0 || !Number.isFinite(Number(quantity))) { setError(true); setMessage('Select an item and unit, then enter a non-zero quantity.'); return }
+    if (kind === 'out' && Number(quantity) < 0) { setError(true); setMessage('Stock Out quantity must be greater than zero.'); return }
     setSaving(true); setMessage(''); setError(false)
     const client = sb()
     const rpc = kind === 'out' ? 'record_stock_out' : 'record_stock_adjustment'
     const payload = kind === 'out'
-      ? { p_item_id: itemId, p_quantity: Number(quantity), p_unit_id: unitId, p_reason: reason, p_notes: notes || null }
-      : { p_item_id: itemId, p_quantity: Number(quantity), p_unit_id: unitId, p_reason: reason, p_notes: notes || null }
+      ? { p_item_id: itemId, p_quantity: Number(quantity), p_unit_id: unitId, p_stock_out_date: today(), p_reason: reason, p_notes: notes || null }
+      : { p_item_id: itemId, p_quantity_delta: Number(quantity), p_unit_id: unitId, p_adjustment_date: today(), p_reason: reason, p_notes: notes || null }
     const { error: e } = await client.rpc(rpc, payload)
     setSaving(false)
     if (e) { setError(true); setMessage(e.message); return }
@@ -67,10 +66,9 @@ export default function InventoryConsoleV2() {
         <Field label="Item"><select value={itemId} onChange={e=>chooseItem(e.target.value)}><option value="">Select item</option>{items.map(i=><option key={txt(i.id)} value={txt(i.id)}>{txt(i.item_code)} — {txt(i.name)}</option>)}</select></Field>
         <Field label="Unit of measure"><select value={unitId} disabled={!itemId} onChange={e=>setUnitId(e.target.value)}><option value="">Select item first</option>{units.map(u=><option key={txt(u.id)} value={txt(u.id)}>{txt(u.name)} ({txt(u.symbol)})</option>)}</select></Field>
         <Field label={kind==='out'?'Quantity':'Adjustment (+ adds / − removes)'}><input type="number" step="0.001" value={quantity} onChange={e=>setQuantity(e.target.value)}/></Field>
-        <Field label="Reason"><select value={reason} onChange={e=>{setReason(e.target.value);if(e.target.value==='production'&&!productionItemId)setProductionItemId(itemId)}}><option value="damage">Damage</option><option value="expiry">Expiry</option><option value="sample">Sample</option><option value="wastage">Wastage</option><option value="personal_use">Personal use</option><option value="production">Production</option><option value="correction">Adjustment</option><option value="other">Other</option></select></Field>
+        <Field label="Reason"><select value={reason} onChange={e=>setReason(e.target.value)}><option value="damage">Damage</option><option value="expiry">Expiry</option><option value="sample">Sample</option><option value="wastage">Wastage</option><option value="personal_use">Personal use</option><option value="correction">Adjustment</option><option value="other">Other</option></select></Field>
       </div>
       {itemId && <div className="unit-standard-note"><strong>Standard unit:</strong> {txt(selectedUnit?.name)} ({txt(selectedUnit?.symbol)}). This is taken from the item&apos;s defined base unit and is used for the stock movement.</div>}
-      {reason==='production' && <div className="production-linked-box"><Field label="Production item"><select value={productionItemId} onChange={e=>setProductionItemId(e.target.value)}><option value="">Select production item</option>{items.filter(i=>i.is_active !== false).map(i=><option key={txt(i.id)} value={txt(i.id)}>{txt(i.item_code)} — {txt(i.name)}</option>)}</select></Field><p className="muted">Production reason selected: choose the item this movement belongs to. The list is always taken from the Item master.</p></div>}
       <Field label="Notes"><textarea value={notes} onChange={e=>setNotes(e.target.value)}/></Field><Status message={message} error={error}/><div className="purchase-actions"><button className="secondary-button" type="button" onClick={reset}>Cancel</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving?'Recording…':'Record Stock Action'}</button></div>
     </Modal>}
     <div className="console-panel"><div className="panel-heading"><h2>Current stock</h2></div><DataTable table="v_inventory_current" refreshToken={refreshToken}/></div>
