@@ -1,7 +1,9 @@
 # Mane Masala — Change Log
 
+This is an append-oriented history. Do not rewrite old entries to hide later corrections.
+
 ## Historical record
-The exact Master State v1.4 is preserved in the persistent Project Library as `MANE_MASALA_MASTER_STATE_v1.4.md`. The existing v1.5 is also preserved there. These historical documents are not rewritten.
+The exact Master State v1.4 and v1.5 are preserved in the Mane Masala Project Library. The current authoritative state is MM-BUSINESS-SPEC-1.6.
 
 ### v1.4
 - 3C-8 approved and Phase 3C planning completed.
@@ -11,11 +13,12 @@ The exact Master State v1.4 is preserved in the persistent Project Library as `M
 
 ### v1.5
 - Phase 4 implementation and deep UX/workflow audit state recorded.
-- Preserved the v1.4 rules while carrying implementation status forward.
+- Preserved v1.4 rules while carrying implementation status forward.
+- Added multi-customer order-entry session, multi-line order refinement, order-party/end-customer traceability, transactional Stock Adjustment, shared sortable DataTable standard, mobile-first validation gate and fixed-logo direction.
 
 ### v1.6
-- Created as the current continuity Master State for the new chat.
-- Added the authoritative order timing clarification: order creation starts planning before final wife confirmation.
+- Created as the current continuity Master State for moving to a new chat.
+- Added authoritative order timing clarification: order creation starts planning before final wife confirmation.
 - Added explicit recipe-version choice when multiple applicable versions exist.
 - Clarified reservation as commitment, not physical stock movement.
 - Clarified wife review/approval before final order confirmation/execution.
@@ -29,31 +32,35 @@ The exact Master State v1.4 is preserved in the persistent Project Library as `M
 - Added permanent Item Code behaviour and in-context master creation patterns.
 - Built purchasing, receiving/inspection, inventory, stock-out/adjustment, recipes/production, orders, dispatch/sale/invoice, payments/allocations and reports foundations.
 - Added order partial approval/procurement workflow, Urgent Procurement dashboard support and related database hardening.
-- Fixed a partial-approval reservation scaling defect so an existing capped reservation is not scaled down a second time.
+- Fixed partial-approval reservation scaling so an existing capped reservation is not scaled down a second time.
 - Fixed a MutationObserver loop that could freeze the production-plan wife-review form.
 - Improved dropdown search so item/product name and code can both be searched while display remains `CODE — Name`.
-- User visually reviewed the partial-order review route and said it looked good to start; this is not equivalent to full authenticated E2E.
-- User requested purchase-flow refinement: supplier/user forms must show business names and user-relevant fields, not raw database IDs; system generates the Purchase No.; supplier slip/bill reference is a separate optional physical-document reference.
-- User requested line-level purchase receiving decisions: Received, Accepted, Rejected/Damaged, automatic shortage calculation, supplier response, credit/refund/dispute treatment and a complete breakdown summary.
+- User visually reviewed the partial-order review route and said it looked good to start; this is not equivalent to authenticated E2E.
+- Refined Purchase UX: supplier/business name rather than raw technical ID, system-generated Purchase No., separate optional supplier slip/bill reference, multi-line entry and guided Receive → Review → Complete flow.
+- Added line-level purchase receiving decisions: Received, Accepted, Rejected/Damaged, automatic shortage calculation, supplier response, credit/refund/dispute treatment and complete breakdown summary.
 
-## 2026-09-16 integrated revalidation corrections
-- Rechecked the current production Orders screen against Master State v1.6 rather than treating the previous active component as authoritative.
-- Replaced the active `/orders` page's reduced operational console with a unified Order Intake + Planning screen implementing Direct/Sub-Agent entry, named/existing/anonymous end-customer traceability, multi-order entry sessions, multi-line orders, sellable product grouping, stock/reservation/available/shortfall planning, explicit recipe selection and wife-approved confirmation.
-- Preserved `/orders-partial` as the dedicated Order Fulfilment path for production, partial/mixed fulfilment and dispatch rather than deleting that workflow.
-- Added explicit `Products for Sale` tabs in Masters & Settings for Finished Products and Purchased Finished Products, backed by the live Item Master and the shared DataTable.
-- Extended the shared DataTable with typed server-side filters so operational filter controls actually filter the table/list itself rather than only a modal selector.
-- Applied those filters to Production for date range, batch, product, status and wife approval.
-- Re-ran the Supabase security advisor. Closed the safe anonymous-execution finding for `save_recipe_version` and changed `v_supplier_outstanding` to security-invoker because authenticated read policies already cover its source tables.
-- Recorded the remaining security findings as explicit release gates rather than blindly revoking intentionally used authenticated SECURITY DEFINER business RPCs.
-- Recorded the system-wide UI law and sellable-product separation as durable decisions in the Decision Register.
+## Phase 4 runtime correction round — 2026-09-17
+- Corrected UUID wrapper volatility so random UUID generation is VOLATILE rather than IMMUTABLE.
+- Applied controlled purchase-unit-to-base-unit conversion and physical receipt-date FIFO handling where repository migrations had not yet been active in the live database.
+- Corrected supplier payment allocation due calculations to account for supplier credit/refund adjustments and synchronize purchase financial status.
+- Runtime verification of these targeted corrections remains a required gate; source/migration application alone is not treated as PASS.
 
-## Continuity package
-- Added `/AGENTS.md` for future coding agents.
-- Added `/VALIDATION_PROTOCOL.md` for independent technical/business validation.
-- Added `/docs/decisions/DECISION_REGISTER.md`.
-- Added `/docs/handover/HANDOVER_TO_NEXT_CHAT.md`.
-- Added `/docs/handover/IMPLEMENTATION_GAP_REPORT.md`.
-- Added this change log.
+## Continuity documentation package — 2026-09-17
+- Strengthened `/AGENTS.md` with the complete continuity, business-integrity, purchase-claim and phase-discipline rules.
+- Strengthened `/VALIDATION_PROTOCOL.md` with technical/business release evidence requirements.
+- Consolidated `/docs/decisions/DECISION_REGISTER.md` with approved, open and historical/superseded decisions.
+- Added `/docs/architecture/ARCHITECTURE_REFERENCE.md`.
+- Added `/docs/business-rules/BUSINESS_RULES_REFERENCE.md`.
+- Added `/docs/database/DATABASE_REFERENCE.md`.
+- Added `/docs/workflows/WORKFLOW_REFERENCE.md`.
+- Updated `/docs/handover/HANDOVER_TO_NEXT_CHAT.md` and `/docs/handover/IMPLEMENTATION_GAP_REPORT.md` for current state.
 
-## Important version-control note
-A new v1.5 was not manufactured after v1.6 existed. The project already contains a historical v1.5 and the authoritative current state is v1.6. Creating a second document also named v1.5 with later v1.6 decisions would corrupt version history. The exact historical v1.4/v1.5 files remain preserved in the Project Library; v1.6 remains the current source of truth.
+## Current repository/deployment state
+- Current `main` commit observed: `90bf801861606e4a40481be7e9bbf4efc2fc7dae` — `docs: record Phase 4 runtime defect correction round 1`.
+- Vercel has a READY production deployment for that exact commit: `dpl_8jxxBptefoJyVPaZcHEZrXXPwc1M`.
+- GitHub combined status for the commit reports Vercel `success`.
+- Production runtime error query for the latest deployment over the last 6 hours returned no error/fatal route entries.
+- These facts do not clear Phase 4; authenticated E2E, mobile E2E and the remaining business/reconciliation gates still require evidence.
+
+## Version-control note
+Do not create a second v1.5 containing later v1.6 decisions. The historical v1.5 already exists in the Project Library. v1.6 remains the current source of truth. If a future state change warrants a new Master State, increment the version normally.
