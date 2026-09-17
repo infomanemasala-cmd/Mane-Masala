@@ -1,5 +1,5 @@
-import InventoryConsoleV2 from '@/components/inventory-console-v2'
+import InventoryConsoleV5 from '@/components/inventory-console-v5'
 
 export default function InventoryPage() {
-  return <InventoryConsoleV2 />
+  return <InventoryConsoleV5 />
 }
