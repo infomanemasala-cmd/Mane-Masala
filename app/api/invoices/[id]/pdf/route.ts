@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const esc = (v: unknown) => String(v ?? '').replace(/\/g, '\\').replace(/(/g, '\(').replace(/)/g, '\)')
+const esc = (v: unknown) => String(v ?? '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 const text = (v: unknown) => String(v ?? '').replace(/[₹]/g, 'Rs. ').replace(/[—–]/g, '-').replace(/•/g, '|')
 const money = (v: unknown) => `Rs. ${Number(v || 0).toFixed(2)}`
 const num = (v: unknown) => Number(v || 0)
