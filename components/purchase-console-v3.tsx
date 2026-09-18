@@ -28,7 +28,8 @@ export default function PurchaseConsoleV3(){
  const update=(i:number,p:Row)=>setLines(v=>v.map((x,k)=>k===i?{...x,...p}:x))
  const gross=(l:Row)=>n(l.qty)*n(l.rate)
  const lineDisc=(l:Row)=>n(l.discount)
- const lineTax=(l:Row)=>{const rate=n(l.gstRate);const taxable=Math.max(0,gross(l)-lineDisc(l));return rate>0?Math.round(taxable*rate)/100:0}\n const lineTotal=(l:Row)=>Math.max(0,gross(l)-lineDisc(l)+lineTax(l))
+ const lineTax=(l:Row)=>{const rate=n(l.gstRate);const taxable=Math.max(0,gross(l)-lineDisc(l));return rate>0?Math.round(taxable*rate)/100:0}
+ const lineTotal=(l:Row)=>Math.max(0,gross(l)-lineDisc(l)+lineTax(l))
  const subtotal=useMemo(()=>lines.reduce((s,l)=>s+lineTotal(l),0),[lines])
  const billTotal=Math.max(0,subtotal-n(discount)+n(tax)+n(delivery)+n(transport)+n(loading)+n(unloading)+n(packing)+n(other))
  const filteredSuppliers=suppliers.filter(s=>`${txt(s.business_code)} ${txt(s.business_name)}`.toLowerCase().includes(supplierSearch.toLowerCase()))
