@@ -13,7 +13,7 @@ const today = () => new Date().toISOString().slice(0,10)
 type Line = { itemId:string; quantity:string; rate:string; gstRate:string }
 type Draft = { party:'direct'|'sub_agent'; customerId:string; subAgentId:string; endMode:'existing'|'named'|'anonymous'; endCustomerId:string; endName:string; endPhone:string; date:string; dispatchDate:string; source:string; advance:string; advanceMethod:string; requests:string; notes:string; lines:Line[] }
 const blank = ():Draft => ({party:'direct',customerId:'',subAgentId:'',endMode:'existing',endCustomerId:'',endName:'',endPhone:'',date:today(),dispatchDate:'',source:'phone',advance:'',advanceMethod:'upi',requests:'',notes:'',lines:[{itemId:'',quantity:'',rate:'',gstRate:''}]})
-function Field({label,children}:{label:string;children:ReactNode}){return <label className="field"><span>{label}</span>{children}</label>}
+function Field({label,children,help}:{label:string;children:ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small className="muted">{help}</small>}</label>}
 function Modal({title,close,children}:{title:string;close:()=>void;children:ReactNode}){return <div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><h3>{title}</h3><button className="secondary-button" type="button" onClick={close}>Close</button></div>{children}</div></div>}
 
 export default function OrdersConsoleUnifiedV6(){
