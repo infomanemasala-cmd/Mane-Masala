@@ -88,5 +88,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const pdf = makePdf({ invoice, business: business || {}, customer, lines: enriched })
   const download = request.nextUrl.searchParams.get('download') === '1'
   const filename = `Mane-Masala-Invoice-${invoice.invoice_number || invoice.business_code || id}.pdf`
-  return new Response(pdf, { status: 200, headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`, 'Content-Length': String(pdf.length), 'Cache-Control': 'private, no-store' })
+  return new Response(pdf, { status: 200, headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`, 'Content-Length': String(pdf.length), 'Cache-Control': 'private, no-store' } })
 }
