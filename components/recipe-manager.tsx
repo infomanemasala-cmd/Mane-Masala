@@ -12,7 +12,7 @@ const num = (v: any) => Number(v ?? 0)
 const blankLine = (n: number): Line => ({ ingredient_item_id: '', quantity: '', unit_id: '', sequence_number: n, notes: '' })
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}</label> }
-function Status({ message, error }: { message: string; error: boolean }) { return message ? <p className={\`form-status\${error ? ' form-status-error' : ''}\`} role="alert">{message}</p> : null }
+function Status({ message, error }: { message: string; error: boolean }) { return message ? <p className={`form-status${error ? ' form-status-error' : ''}`} role="alert">{message}</p> : null }
 
 export default function RecipeManager() {
   const [items, setItems] = useState<Row[]>([]), [units, setUnits] = useState<Row[]>([]), [recipes, setRecipes] = useState<Row[]>([])
