@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import DataTable from '@/components/data-table'
+import MasterItemManager from '@/components/master-item-manager'
 
 type Row = Record<string, unknown>
 type MasterTable = 'items' | 'suppliers' | 'customers' | 'units' | 'categories' | 'sub_agents'
@@ -122,5 +123,6 @@ function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => voi
 
 export default function MasterManager({ table }: { table: MasterTable }) {
   const [refreshToken, setRefreshToken] = useState(0), [open, setOpen] = useState(false)
+  if (table === 'items') return <MasterItemManager />
   return <div className="master-manager"><div className="master-header"><div><h2>{titles[table]} Master</h2><p>Create records here. The system generates the permanent business code automatically.</p></div><button className="primary-button" onClick={() => setOpen(true)}>+ Create {titles[table]}</button></div>{open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}><div className="modal-card" role="dialog" aria-modal="true" aria-label={`Create ${titles[table]}`}><div className="modal-header"><h3>Create {titles[table]}</h3><button className="secondary-button" type="button" onClick={() => setOpen(false)}>Close</button></div><p className="muted">Business code is generated automatically after you save.</p><MasterForm table={table} onSaved={() => { setRefreshToken((value) => value + 1); setOpen(false) }} /></div></div>}<div className="master-list"><DataTable table={table} refreshToken={refreshToken} /></div></div>
 }
