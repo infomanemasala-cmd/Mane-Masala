@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import DataTable from '@/components/data-table'
+import MasterEditForm from '@/components/master-edit-form'
 
 type Row = Record<string, unknown>
 type MasterTable = 'items' | 'suppliers' | 'customers' | 'units' | 'categories' | 'sub_agents'
@@ -121,6 +122,15 @@ function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => voi
 }
 
 export default function MasterManager({ table }: { table: MasterTable }) {
-  const [refreshToken, setRefreshToken] = useState(0), [open, setOpen] = useState(false)
-  return <div className="master-manager"><div className="master-header"><div><h2>{titles[table]} Master</h2><p>Create records here. The system generates the permanent business code automatically.</p></div><button className="primary-button" onClick={() => setOpen(true)}>+ Create {titles[table]}</button></div>{open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}><div className="modal-card" role="dialog" aria-modal="true" aria-label={`Create ${titles[table]}`}><div className="modal-header"><h3>Create {titles[table]}</h3><button className="secondary-button" type="button" onClick={() => setOpen(false)}>Close</button></div><p className="muted">Business code is generated automatically after you save.</p><MasterForm table={table} onSaved={() => { setRefreshToken((value) => value + 1); setOpen(false) }} /></div></div>}<div className="master-list"><DataTable table={table} refreshToken={refreshToken} /></div></div>
+  const [refreshToken,setRefreshToken]=useState(0),[open,setOpen]=useState(false),[editing,setEditing]=useState<Row|null>(null),[archived,setArchived]=useState(false),[selected,setSelected]=useState<string[]>([]),[message,setMessage]=useState('')
+  const close=()=>{setOpen(false);setEditing(null)}
+  const archive=async()=>{if(!selected.length)return;setMessage('');for(const id of selected){const{error}=await createClient().rpc('archive_master_record',{p_table:table,p_id:id,p_reason:'Archived manually from Master Data'});if(error){setMessage(error.message);return}}setMessage(selected.length+' record(s) archived. Historical transactions were not deleted.');setSelected([]);setRefreshToken(v=>v+1)}
+  const filters=[{column:'is_active',operator:'eq' as const,value:!archived}]
+  return <div className="master-manager">
+    <div className="master-header"><div><h2>{titles[table]} Master</h2><p>Correct ordinary Master Data mistakes without changing historical transactions.</p></div><div className="workflow-actions"><button className={archived?'secondary-button':'primary-button'} type="button" onClick={()=>{setArchived(false);setSelected([])}}>Active Records</button><button className={archived?'primary-button':'secondary-button'} type="button" onClick={()=>{setArchived(true);setSelected([])}}>Archived Records</button><button className="primary-button" type="button" onClick={()=>{setEditing(null);setOpen(true)}}>+ Create {titles[table]}</button></div></div>
+    {message&&<p className="form-status">{message}</p>}
+    {open&&<div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><h3>{editing?'Edit ':'Create '}{titles[table]}</h3><button className="secondary-button" type="button" onClick={close}>Close</button></div><p className="muted">Business codes stay permanent. Master edits do not rewrite historical transactions.</p>{editing?<MasterEditForm table={table} row={editing} onSaved={()=>{setRefreshToken(v=>v+1);close()}}/>:<MasterForm table={table} onSaved={()=>{setRefreshToken(v=>v+1);close()}}/>}</div></div>}
+    <div className="master-list"><DataTable table={table} refreshToken={refreshToken} filters={filters} selectable={!archived} onSelectionChange={setSelected} rowActionLabel={archived?undefined:'Edit'} onRowAction={row=>{setEditing(row);setOpen(true)}} /></div>
+    <div className="workflow-actions"><button className="secondary-button" type="button" disabled={archived||selected.length===0} onClick={()=>void archive()}>Archive selected{selected.length?' ('+selected.length+')':''}</button><span className="muted">Archive is disabled until at least one record is selected.</span></div>
+  </div>
 }
