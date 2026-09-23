@@ -38,7 +38,7 @@ export default function RecipeManager() {
   }, [recipes, search, showArchived])
   const ingredientItems = items.filter(item => item.can_be_used_in_production !== false)
   const itemOptions = items.map(item => ({ value: txt(item.id), label: `${txt(item.item_code || item.business_code)} — ${txt(item.name)}`, code: txt(item.item_code || item.business_code), name: txt(item.name) }))
-  const unitLabel = (id: string) => { const u = units.find(x => txt(x.id) === id); return u ? \`\${txt(u.name)} (\${txt(u.symbol)})\` : '' }
+  const unitLabel = (id: string) => { const u = units.find(x => txt(x.id) === id); return u ? `${txt(u.name)} (${txt(u.symbol)})` : '' }
   const unitForItem = (id: string) => txt(items.find(item => txt(item.id) === id)?.base_unit_id)
 
   const reset = () => { setOpen(false); setRecipeId(''); setRecipeCode(''); setName(''); setOutputItemId(''); setExpectedOutput(''); setOutputUnitId(''); setBaseIngredientId(''); setNotes(''); setLines([blankLine(1)]); setVersions([]); setMessage(''); setError(false) }
