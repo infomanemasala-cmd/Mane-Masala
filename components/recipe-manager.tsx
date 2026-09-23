@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import DataTable from '@/components/data-table'
 import SearchableSelect from '@/components/searchable-select'
 
 type Row = Record<string, any>
@@ -17,7 +16,7 @@ function Status({ message, error }: { message: string; error: boolean }) { retur
 
 export default function RecipeManager() {
   const [items, setItems] = useState<Row[]>([]), [units, setUnits] = useState<Row[]>([]), [recipes, setRecipes] = useState<Row[]>([])
-  const [showArchived, setShowArchived] = useState(false), [search, setSearch] = useState(''), [selected, setSelected] = useState<string[]>([])
+  const [showArchived, setShowArchived] = useState(false), [search, setSearch] = useState(''), [selected, setSelected] = useState<string[]>([]), [pendingArchive, setPendingArchive] = useState(false)
   const [open, setOpen] = useState(false), [recipeId, setRecipeId] = useState(''), [recipeCode, setRecipeCode] = useState('')
   const [name, setName] = useState(''), [outputItemId, setOutputItemId] = useState(''), [expectedOutput, setExpectedOutput] = useState(''), [outputUnitId, setOutputUnitId] = useState(''), [baseIngredientId, setBaseIngredientId] = useState(''), [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([blankLine(1)]), [versions, setVersions] = useState<Row[]>([]), [message, setMessage] = useState(''), [error, setError] = useState(false), [saving, setSaving] = useState(false)
@@ -83,8 +82,8 @@ export default function RecipeManager() {
     if (!selected.length) return
     if (!window.confirm(\`Archive \${selected.length} selected recipe\${selected.length === 1 ? '' : 's'}? Historical versions will remain.\`)) return
     setSaving(true); setMessage(''); setError(false)
-    for (const id of selected) { const { error: e } = await db().rpc('archive_recipe', { p_recipe_id: id, p_reason: 'Archived from Recipe Master' }); if (e) { setSaving(false); setError(true); setMessage(e.message); return } }
-    setSelected([]); setSaving(false); setMessage('Recipe archived successfully.'); await load()
+    for (const id of selected) { const { error: e } = await db().rpc('archive_recipe', { p_recipe_id: id, p_reason: 'Archived from Recipe Master' }); if (e) { setSaving(false); setError(true); setMessage(e.message); setPendingArchive(false); return } }
+    setSelected([]); setSaving(false); setPendingArchive(false); setMessage('Recipe archived successfully.'); await load()
   }
   const restore = async (id: string) => {
     if (!window.confirm('Restore this recipe to the active list?')) return
@@ -93,9 +92,10 @@ export default function RecipeManager() {
   }
 
   return <div>
-    <div className="master-header"><div><h2>Recipes</h2><p>Search, edit, version, archive and restore recipes. Historical versions stay unchanged when a new version is saved.</p></div><div className="table-toolbar-right"><button className="secondary-button" type="button" onClick={() => { setShowArchived(v => !v); setSelected([]) }}>{showArchived ? 'Active Recipes' : 'Archived Recipes'}</button><button className="secondary-button" type="button" disabled={!selected.length || showArchived || saving} onClick={() => void archive()}>Archive{selected.length ? \` (\${selected.length})\` : ''}</button><button className="primary-button" type="button" onClick={startNew}>+ Create Recipe</button></div></div>
+    <div className="master-header"><div><h2>Recipes</h2><p>Search, edit, version, archive and restore recipes. Historical versions stay unchanged when a new version is saved.</p></div><div className="table-toolbar-right"><button className="secondary-button" type="button" onClick={() => { setShowArchived(v => !v); setSelected([]) }}>{showArchived ? 'Active Recipes' : 'Archived Recipes'}</button><button className="secondary-button" type="button" disabled={!selected.length || showArchived || saving} onClick={() => setPendingArchive(true)}>Archive{selected.length ? \` (\${selected.length})\` : ''}</button><button className="primary-button" type="button" onClick={startNew}>+ Create Recipe</button></div></div>
     <div className="data-table"><div className="table-toolbar"><input className="table-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search recipe code or name…" aria-label="Search recipes by code or name"/><span className="table-count">{visibleRecipes.length} recipe{visibleRecipes.length === 1 ? '' : 's'}</span></div><div className="table-wrap"><table><thead><tr>{!showArchived && <th><input type="checkbox" aria-label="Select all visible recipes" checked={visibleRecipes.length > 0 && visibleRecipes.every(r => selected.includes(txt(r.id)))} onChange={e => setSelected(e.target.checked ? visibleRecipes.map(r => txt(r.id)) : [])}/></th>}<th>Code</th><th>Recipe</th><th>Status</th><th>Output</th><th>Action</th></tr></thead><tbody>{visibleRecipes.map(row => <tr key={txt(row.id)}>{!showArchived && <td><input type="checkbox" checked={selected.includes(txt(row.id))} onChange={e => setSelected(v => e.target.checked ? [...new Set([...v,txt(row.id)])] : v.filter(id => id !== txt(row.id)))} aria-label={\`Select \${txt(row.name)}\`}/></td>}<td>{txt(row.business_code)}</td><td>{txt(row.name)}</td><td>{txt(row.status)}</td><td>{txt(items.find(i => txt(i.id) === txt(row.output_item_id))?.item_code || items.find(i => txt(i.id) === txt(row.output_item_id))?.business_code)} — {txt(items.find(i => txt(i.id) === txt(row.output_item_id))?.name)}</td><td>{showArchived ? <button className="secondary-button" type="button" onClick={() => void restore(txt(row.id))} disabled={saving}>Restore</button> : <button className="secondary-button" type="button" onClick={() => void openRecipe(row)}>Edit</button>}</td></tr>)}{!visibleRecipes.length && <tr><td colSpan={showArchived ? 6 : 7} className="table-message">No recipes found.</td></tr>}</tbody></table></div></div>
     {message && <Status message={message} error={error}/>}
+    {pendingArchive && <div className="modal-backdrop" role="presentation"><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="archive-recipe-title"><div className="modal-header"><h3 id="archive-recipe-title">Archive selected recipes?</h3><button className="secondary-button" type="button" onClick={() => setPendingArchive(false)} disabled={saving}>Cancel</button></div><p className="muted">{selected.length} selected recipe{selected.length === 1 ? '' : 's'} will leave the active list but remain in history. Recipes used by active production batches will be blocked safely.</p><div className="purchase-actions"><button className="secondary-button" type="button" onClick={() => setPendingArchive(false)} disabled={saving}>Cancel</button><button className="primary-button" type="button" onClick={() => void archive()} disabled={saving}>{saving ? 'Archiving…' : 'Confirm Archive'}</button></div></div></div>}
     {open && <div className="modal-backdrop"><div className="modal-card purchase-modal">
       <div className="modal-header"><div><h3>{recipeId ? \`Recipe \${recipeCode}\` : 'Create Recipe'}</h3><p className="muted">Saving an active recipe creates a new version; existing production versions are never overwritten.</p></div><button className="secondary-button" type="button" onClick={reset} disabled={saving}>Close</button></div>
       <div className="form-grid">
