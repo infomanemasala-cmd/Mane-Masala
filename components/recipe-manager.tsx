@@ -34,7 +34,7 @@ export default function RecipeManager() {
 
   const visibleRecipes = useMemo(() => {
     const q = search.trim().toLocaleLowerCase()
-    return recipes.filter(r => (showArchived ? r.status !== 'active' : r.status === 'active') && (!q || \`\${txt(r.business_code)} \${txt(r.name)}\`.toLocaleLowerCase().includes(q)))
+    return recipes.filter(r => (showArchived ? r.status !== 'active' : r.status === 'active') && (!q || `${txt(r.business_code)} ${txt(r.name)}`.toLocaleLowerCase().includes(q)))
   }, [recipes, search, showArchived])
   const ingredientItems = items.filter(item => item.can_be_used_in_production !== false)
   const itemOptions = items.map(item => ({ value: txt(item.id), label: \`\${txt(item.item_code || item.business_code)} — \${txt(item.name)}\`, code: txt(item.item_code || item.business_code), name: txt(item.name) }))
