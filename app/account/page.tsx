@@ -29,7 +29,7 @@ export default function AccountPage() {
     const sb = createClient()
     const { error: verifyError } = await sb.auth.signInWithPassword({ email, password: currentPassword })
     if (verifyError) { setBusy(false); setError('Current password is incorrect.'); return }
-    const { error: updateError } = await sb.auth.updateUser({ password: newPassword })
+    const { error: updateError } = await sb.auth.updateUser({ password: newPassword, current_password: currentPassword })
     setBusy(false)
     if (updateError) { setError(updateError.message); return }
     setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setMessage('Password changed successfully.')
