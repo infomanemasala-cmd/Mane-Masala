@@ -80,7 +80,7 @@ export default function RecipeManager() {
 
   const archive = async () => {
     if (!selected.length) return
-    if (!window.confirm(\`Archive \${selected.length} selected recipe\${selected.length === 1 ? '' : 's'}? Historical versions will remain.\`)) return
+    if (!window.confirm(`Archive ${selected.length} selected recipe${selected.length === 1 ? '' : 's'}? Historical versions will remain.`)) return
     setSaving(true); setMessage(''); setError(false)
     for (const id of selected) { const { error: e } = await db().rpc('archive_recipe', { p_recipe_id: id, p_reason: 'Archived from Recipe Master' }); if (e) { setSaving(false); setError(true); setMessage(e.message); setPendingArchive(false); return } }
     setSelected([]); setSaving(false); setPendingArchive(false); setMessage('Recipe archived successfully.'); await load()
