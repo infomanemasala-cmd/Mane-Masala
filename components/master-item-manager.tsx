@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import SearchableSelect, { type SearchableOption } from '@/components/searchable-select'
+import SearchableSelect from '@/components/searchable-select'
 
 type Row = Record<string, any>
 const db = () => createClient()
