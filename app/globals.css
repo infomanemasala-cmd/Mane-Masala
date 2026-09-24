@@ -11,3 +11,5 @@
 .searchable-select-menu{min-width:260px;max-width:min(420px,90vw);padding:8px;z-index:40}
 .searchable-select-search{width:100%;box-sizing:border-box;margin-bottom:6px}
 .searchable-select-results{max-height:280px;overflow:auto}
+
+.password-field{position:relative;display:flex;align-items:stretch}.password-field input{padding-right:72px}.password-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--accent);font-weight:700;cursor:pointer;padding:6px 8px}.password-toggle:focus{outline:2px solid var(--accent);outline-offset:1px;border-radius:6px}.account-page{max-width:760px}.account-form{max-width:560px}.account-form .primary-button{justify-self:start}
