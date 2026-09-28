@@ -23,7 +23,7 @@ function mergePackageNotes(existing: string, packageType: string, packageSize: s
   return rest ? `${rest}\n${productLine}` : productLine
 }
 
-export default function MasterItemManager() {
+export default function MasterItemManager({ requestedCreateType, onCreateRequestConsumed }: { requestedCreateType?: string | null; onCreateRequestConsumed?: () => void }) {
   const [rows, setRows] = useState<Row[]>([]), [search, setSearch] = useState(''), [sort, setSort] = useState('item_code'), [ascending, setAscending] = useState(true)
   const [selected, setSelected] = useState<string[]>([]), [editing, setEditing] = useState<Row | null>(null), [creating, setCreating] = useState(false), [view, setView] = useState<'active' | 'inactive' | 'archived'>('active'), [pendingArchive, setPendingArchive] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const [units, setUnits] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [types, setTypes] = useState<Row[]>([])
@@ -48,6 +48,7 @@ export default function MasterItemManager() {
   }, [rows, search, view, sort, ascending])
 
   const openCreate = (preset = '') => { setEditing(null); setCreating(true); setName(''); setItemType(preset || txt(types[0]?.code)); setCategoryId(''); setSubcategory(''); setProductFamily(''); setPurchaseUnitId(''); setBaseUnitId(''); setSellingUnitId(''); setMinimumStock('0'); setCanBeSold(false); setCanBeUsed(false); setIsIntermediate(false); setIsPerishable(false); setExpiryTracking(false); setExpiryValue(''); setExpiryUnit('months'); setNotes(''); setPackageType(''); setPackageSize(''); setMessage(''); setError('') }
+  useEffect(() => { if (requestedCreateType) { openCreate(requestedCreateType); onCreateRequestConsumed?.() } }, [requestedCreateType])
   const openEdit = (row: Row) => {
     const p = packageFields(txt(row.notes)); setCreating(false); setEditing(row); setName(txt(row.name)); setItemType(txt(row.item_type)); setCategoryId(txt(row.category_id)); setSubcategory(txt(row.subcategory)); setProductFamily(txt(row.product_family)); setPurchaseUnitId(txt(row.purchase_unit_id)); setBaseUnitId(txt(row.base_unit_id)); setSellingUnitId(txt(row.selling_unit_id)); setMinimumStock(txt(row.minimum_stock)); setCanBeSold(Boolean(row.can_be_sold)); setCanBeUsed(Boolean(row.can_be_used_in_production)); setIsIntermediate(Boolean(row.is_intermediate)); setIsPerishable(Boolean(row.is_perishable)); setExpiryTracking(Boolean(row.expiry_tracking_enabled)); setExpiryValue(txt(row.expiry_duration_value)); setExpiryUnit(txt(row.expiry_duration_unit || 'months')); setNotes(txt(row.notes)); setPackageType(p.packageType); setPackageSize(p.packageSize); setMessage(''); setError('')
   }
