@@ -78,15 +78,15 @@ function MasterForm({ table, editing = null, onSaved, onCancel }: { table: Exclu
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setMessage(''); setError('')
-    const form = new FormData(event.currentTarget), sb = createClient(); let payload: Record<string, unknown>
+    const form = new FormData(event.currentTarget), sb = createClient(); let payload: Record<string, unknown> = {}
     if (table === 'units') payload = { name: String(form.get('name') || '').trim(), symbol: String(form.get('symbol') || '').trim() }
     else if (table === 'categories') payload = { name: String(form.get('name') || '').trim(), parent_category_id: String(form.get('parent_category_id') || '') || null }
     else if (table === 'suppliers') payload = { business_name: String(form.get('business_name') || '').trim(), contact_person: String(form.get('contact_person') || '').trim() || null, supplier_type: String(form.get('supplier_type') || 'other'), phone: String(form.get('phone') || '').trim() || null, whatsapp: String(form.get('whatsapp') || '').trim() || null, order_call_number: String(form.get('order_call_number') || '').trim() || null, upi_id: String(form.get('upi_id') || '').trim() || null, gpay_phonepe: String(form.get('gpay_phonepe') || '').trim() || null, address: String(form.get('address') || '').trim() || null, gst_number: String(form.get('gst_number') || '').trim() || null, email: String(form.get('email') || '').trim() || null, preferred_payment_method: String(form.get('preferred_payment_method') || '').trim() || null, notes: String(form.get('notes') || '').trim() || null }
     else if (table === 'customers') payload = { name: String(form.get('name') || '').trim(), customer_type: String(form.get('customer_type') || 'individual'), phone: String(form.get('phone') || '').trim() || null, whatsapp: String(form.get('whatsapp') || '').trim() || null, email: String(form.get('email') || '').trim() || null, address: String(form.get('address') || '').trim() || null, gst_number: String(form.get('gst_number') || '').trim() || null, notes: String(form.get('notes') || '').trim() || null }
     else if (table === 'sub_agents') payload = { customer_id: String(form.get('customer_id') || '') || null, name: String(form.get('name') || '').trim(), phone: String(form.get('phone') || '').trim() || null, whatsapp: String(form.get('whatsapp') || '').trim() || null, address: String(form.get('address') || '').trim() || null, notes: String(form.get('notes') || '').trim() || null }
-    const { data, error: insertError } = await sb.from(table).insert(payload).select('*').single()
-    if (insertError) setError(insertError.message)
-    else { const generated = String((data as Row)?.business_code ?? (data as Row)?.code ?? ''); setMessage(generated ? `Saved successfully. Code: ${generated}` : 'Saved successfully.'); event.currentTarget.reset(); setTrackExpiry(false); onSaved() }
+    const result = editing ? await sb.from(table).update(payload).eq('id', editing.id).select('*').single() : await sb.from(table).insert(payload).select('*').single()
+    if (result.error) setError(result.error.message)
+    else { const generated = String((result.data as Row)?.business_code ?? (result.data as Row)?.code ?? txt(editing?.business_code ?? editing?.code)); setMessage(generated ? `Saved successfully. Code: ${generated}` : 'Saved successfully.'); event.currentTarget.reset(); setTrackExpiry(false); onSaved() }
     setBusy(false)
   }
 
