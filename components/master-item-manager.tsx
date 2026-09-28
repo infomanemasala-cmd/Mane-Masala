@@ -7,8 +7,9 @@ import SearchableSelect from '@/components/searchable-select'
 type Row = Record<string, any>
 const db = () => createClient()
 const txt = (v: any) => String(v ?? '')
+const statusOf = (row: Row) => row.archived_at ? 'ARCHIVED' : row.is_active ? 'ACTIVE' : 'INACTIVE'
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="form-field"><span>{label}</span>{children}</label> }
+function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) { return <label className="form-field"><span>{label}{required ? ' *' : ''}</span>{children}</label> }
 
 function packageFields(notes: string) {
   const packageMatch = notes.match(/Package:\s*([^|\n]+)/i)
