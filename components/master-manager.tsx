@@ -55,7 +55,8 @@ function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => voi
       ])
       setUnits((u.data ?? []) as Row[]); setCategories((c.data ?? []) as Row[]); setItemTypes((t.data ?? []) as Row[])
     }
-    if (table === 'sub_agents') void sb.from('customers').select('id,name,customer_type').eq('is_active', true).eq('customer_type', 'sub_agent').order('name').then(({ data }) => setCustomers((data ?? []) as Row[]))
+    if (table === 'categories') void sb.from('categories').select('id,name,code').eq('is_active', true).order('name').then(({ data }) => setCategories((data ?? []) as Row[]))
+    if (table === 'sub_agents') void sb.from('customers').select('id,name,customer_type,business_code').eq('is_active', true).eq('customer_type', 'sub_agent').order('name').then(({ data }) => setCustomers((data ?? []) as Row[]))
   }
   useEffect(() => { void loadLists() }, [table])
 
