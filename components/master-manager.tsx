@@ -13,8 +13,6 @@ const customerTypes = [['individual', 'Individual'], ['retail_shop', 'Retail sho
 const titles: Record<MasterTable, string> = { items: 'Item', suppliers: 'Supplier', customers: 'Customer', units: 'Unit', categories: 'Category', sub_agents: 'Sub-agent' }
 const db = () => createClient()
 const txt = (v: any) => String(v ?? '')
-const db = () => createClient()
-const txt = (v: any) => String(v ?? '')
 
 function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) { return <label className="form-field"><span>{label}{required ? ' *' : ''}</span>{children}</label> }
 function SubmitButton({ busy, children }: { busy: boolean; children: React.ReactNode }) { return <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving…' : children}</button> }
