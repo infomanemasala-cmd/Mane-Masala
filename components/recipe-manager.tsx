@@ -93,7 +93,7 @@ export default function RecipeManager() {
   const restore = async (id: string) => {
     if (!window.confirm('Restore this recipe to the active list?')) return
     setSaving(true); setMessage(''); setError(false); const { error: e } = await db().rpc('restore_recipe', { p_recipe_id: id }); setSaving(false)
-    if (e) { setError(true); setMessage(e.message); return } setMessage('Recipe restored successfully.'); await load()
+    if (e) { setError(true); setMessage(e.message); return } setMessage('Recipe restored to its previous lifecycle status.'); await load()
   }
 
   return <div>
