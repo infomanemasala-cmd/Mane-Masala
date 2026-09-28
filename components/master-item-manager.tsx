@@ -38,7 +38,14 @@ export default function MasterItemManager() {
   }
   useEffect(() => { void load() }, [])
 
-  const chooseSort = (column: string) => { if (sort === column) setAscending(v => !v); else { setSort(column); setAscending(true) } }\n\n  const filtered = useMemo(() => { const q = search.trim().toLocaleLowerCase(); const matchesStatus = (r: Row) => r.archived_at ? view === 'archived' : (r.is_active ? view === 'active' : view === 'inactive'); if (!q) const matched = !q ? rows.filter(matchesStatus) : rows.filter(r => matchesStatus(r) && `${txt(r.item_code)} ${txt(r.business_code)} ${txt(r.name)} ${txt(r.item_type)}`.toLocaleLowerCase().includes(q)); return [...matched].sort((a,b) => txt(a[sort]).localeCompare(txt(b[sort]),undefined,{numeric:true}) * (ascending ? 1 : -1)) }, [rows, search, view, sort, ascending])
+  const chooseSort = (column: string) => { if (sort === column) setAscending(v => !v); else { setSort(column); setAscending(true) } }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase()
+    const matchesStatus = (r: Row) => r.archived_at ? view === 'archived' : (r.is_active ? view === 'active' : view === 'inactive')
+    const matched = !q ? rows.filter(matchesStatus) : rows.filter(r => matchesStatus(r) && `${txt(r.item_code)} ${txt(r.business_code)} ${txt(r.name)} ${txt(r.item_type)}`.toLocaleLowerCase().includes(q))
+    return [...matched].sort((a, b) => txt(a[sort]).localeCompare(txt(b[sort]), undefined, { numeric: true }) * (ascending ? 1 : -1))
+  }, [rows, search, view, sort, ascending])
 
   const openCreate = (preset = '') => { setEditing(null); setCreating(true); setName(''); setItemType(preset || txt(types[0]?.code)); setCategoryId(''); setSubcategory(''); setProductFamily(''); setPurchaseUnitId(''); setBaseUnitId(''); setSellingUnitId(''); setMinimumStock('0'); setCanBeSold(false); setCanBeUsed(false); setIsIntermediate(false); setIsPerishable(false); setExpiryTracking(false); setExpiryValue(''); setExpiryUnit('months'); setNotes(''); setPackageType(''); setPackageSize(''); setMessage(''); setError('') }
   const openEdit = (row: Row) => {
