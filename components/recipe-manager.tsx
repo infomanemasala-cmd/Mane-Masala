@@ -35,7 +35,7 @@ export default function RecipeManager() {
   const visibleRecipes = useMemo(() => {
     const q = search.trim().toLocaleLowerCase()
     return recipes.filter(r => txt(r.status) === view && (!q || `${txt(r.business_code)} ${txt(r.name)}`.toLocaleLowerCase().includes(q)))
-  }, [recipes, search, showArchived])
+  }, [recipes, search, view])
   const ingredientItems = items.filter(item => item.can_be_used_in_production !== false)
   const itemOptions = items.map(item => ({ value: txt(item.id), label: `${txt(item.item_code || item.business_code)} — ${txt(item.name)}`, code: txt(item.item_code || item.business_code), name: txt(item.name) }))
   const unitLabel = (id: string) => { const u = units.find(x => txt(x.id) === id); return u ? `${txt(u.name)} (${txt(u.symbol)})` : '' }
