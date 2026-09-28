@@ -11,6 +11,8 @@ type SelectOption = { value: string; label: string }
 const supplierTypes = [['wholesaler', 'Wholesaler'], ['retailer', 'Retailer'], ['individual', 'Individual / Person'], ['farmer_producer', 'Farmer / Producer'], ['online_marketplace', 'Online marketplace'], ['manufacturer', 'Manufacturer'], ['other', 'Other']]
 const customerTypes = [['individual', 'Individual'], ['retail_shop', 'Retail shop'], ['restaurant', 'Restaurant'], ['caterer', 'Caterer'], ['online_customer', 'Online customer'], ['sub_agent', 'Sub-agent']]
 const titles: Record<MasterTable, string> = { items: 'Item', suppliers: 'Supplier', customers: 'Customer', units: 'Unit', categories: 'Category', sub_agents: 'Sub-agent' }
+const db = () => createClient()
+const txt = (v: any) => String(v ?? '')
 
 function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) { return <label className="form-field"><span>{label}{required ? ' *' : ''}</span>{children}</label> }
 function SubmitButton({ busy, children }: { busy: boolean; children: React.ReactNode }) { return <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving…' : children}</button> }
@@ -40,7 +42,7 @@ function CreateableSelect({ name, initialValue = '', options, placeholder, creat
   </div>
 }
 
-function MasterForm({ table, onSaved }: { table: MasterTable; onSaved: () => void }) {
+function MasterForm({ table, editing = null, onSaved, onCancel }: { table: Exclude<MasterTable,'items'>; editing?: Row | null; onSaved: () => void; onCancel?: () => void }) {
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('')
   const [units, setUnits] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [customers, setCustomers] = useState<Row[]>([]), [itemTypes, setItemTypes] = useState<Row[]>([])
   const [trackExpiry, setTrackExpiry] = useState(false)
