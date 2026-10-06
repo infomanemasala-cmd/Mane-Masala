@@ -1,1 +1,151 @@
-PLACEHOLDER_WILL_FAIL
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import SearchableSelect from '@/components/searchable-select'
+
+type Row = Record<string, any>
+const db = () => createClient()
+const txt = (v: any) => String(v ?? '')
+const statusOf = (row: Row) => row.archived_at ? 'ARCHIVED' : row.is_active ? 'ACTIVE' : 'INACTIVE'
+
+function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) { return <label className="form-field"><span>{label}{required ? ' *' : ''}</span>{children}</label> }
+
+/** Parse human size like 250g / 0.25kg / 250 into kg */
+function parsePackSizeToKg(raw: string): number | null {
+  const t = raw.trim().toLowerCase().replace(/\s+/g, '')
+  if (!t) return null
+  const m = t.match(/^([0-9]*\.?[0-9]+)(kg|g)?$/)
+  if (!m) return null
+  const n = Number(m[1])
+  if (!(n > 0)) return null
+  if (m[2] === 'g') return n / 1000
+  return n
+}
+
+function formatPackSizeDisplay(kg: number | null | undefined): string {
+  if (kg == null || !(Number(kg) > 0)) return ''
+  const g = Math.round(Number(kg) * 1000)
+  if (g % 1000 === 0) return `${g / 1000}kg`
+  return `${g}g`
+}
+
+function buildPackLabel(itemName: string, sizeKg: number): string {
+  const g = Math.round(sizeKg * 1000)
+  const suffix = g % 1000 === 0 ? `${g / 1000}KG` : `${g}G`
+  return `${itemName.trim()} ${suffix}`
+}
+
+const PACK_TYPE_OPTIONS = [
+  'Brown Kraft Paper Ziplock Pouch',
+  'Glass Jar',
+  'Container',
+  'Bottle',
+  'Pouch',
+  'Other',
+]
+
+export default function MasterItemManager({ requestedCreateType, onCreateRequestConsumed }: { requestedCreateType?: string | null; onCreateRequestConsumed?: () => void }) {
+  const [rows, setRows] = useState<Row[]>([]), [search, setSearch] = useState(''), [sort, setSort] = useState('item_code'), [ascending, setAscending] = useState(true)
+  const [selected, setSelected] = useState<string[]>([]), [editing, setEditing] = useState<Row | null>(null), [creating, setCreating] = useState(false), [view, setView] = useState<'active' | 'inactive' | 'archived'>('active'), [pendingArchive, setPendingArchive] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [units, setUnits] = useState<Row[]>([]), [categories, setCategories] = useState<Row[]>([]), [types, setTypes] = useState<Row[]>([])
+  const [name, setName] = useState(''), [itemType, setItemType] = useState(''), [categoryId, setCategoryId] = useState(''), [subcategory, setSubcategory] = useState(''), [productFamily, setProductFamily] = useState(''), [purchaseUnitId, setPurchaseUnitId] = useState(''), [baseUnitId, setBaseUnitId] = useState(''), [sellingUnitId, setSellingUnitId] = useState(''), [minimumStock, setMinimumStock] = useState('0'), [canBeSold, setCanBeSold] = useState(false), [canBeUsed, setCanBeUsed] = useState(false), [isIntermediate, setIsIntermediate] = useState(false), [isPerishable, setIsPerishable] = useState(false), [expiryTracking, setExpiryTracking] = useState(false), [expiryValue, setExpiryValue] = useState(''), [expiryUnit, setExpiryUnit] = useState('months'), [notes, setNotes] = useState(''), [packageType, setPackageType] = useState(''), [packageSize, setPackageSize] = useState('')
+
+  const load = async () => {
+    const [{ data: itemRows, error: itemError }, { data: unitRows }, { data: categoryRows }, { data: typeRows }] = await Promise.all([
+      db().from('items').select('*').order('item_code'), db().from('units').select('id,name,symbol,code').eq('is_active', true).order('name'), db().from('categories').select('id,name,code').eq('is_active', true).order('name'), db().from('item_types').select('id,name,code').eq('is_active', true).order('name')
+    ])
+    if (itemError) setError(itemError.message)
+    setRows(itemRows ?? []); setUnits(unitRows ?? []); setCategories(categoryRows ?? []); setTypes(typeRows ?? [])
+  }
+  useEffect(() => { void load() }, [])
+
+  const chooseSort = (column: string) => { if (sort === column) setAscending(v => !v); else { setSort(column); setAscending(true) } }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase()
+    const matchesStatus = (r: Row) => r.archived_at ? view === 'archived' : (r.is_active ? view === 'active' : view === 'inactive')
+    const matched = !q ? rows.filter(matchesStatus) : rows.filter(r => matchesStatus(r) && `${txt(r.item_code)} ${txt(r.business_code)} ${txt(r.name)} ${txt(r.item_type)}`.toLocaleLowerCase().includes(q))
+    return [...matched].sort((a, b) => txt(a[sort]).localeCompare(txt(b[sort]), undefined, { numeric: true }) * (ascending ? 1 : -1))
+  }, [rows, search, view, sort, ascending])
+
+  const openCreate = (preset = '') => {
+    const type = preset || txt(types[0]?.code) || 'raw_material'
+    setEditing(null); setCreating(true); setName(''); setItemType(type); setCategoryId(''); setSubcategory(''); setProductFamily(''); setPurchaseUnitId(''); setBaseUnitId(''); setSellingUnitId(''); setMinimumStock('0')
+    setCanBeSold(type === 'finished_product' || type === 'purchased_finished_product')
+    setCanBeUsed(type === 'raw_material' || type === 'intermediate')
+    setIsIntermediate(type === 'intermediate')
+    setIsPerishable(false); setExpiryTracking(false); setExpiryValue(''); setExpiryUnit('months'); setNotes(''); setPackageType(''); setPackageSize(''); setMessage(''); setError('')
+  }
+  useEffect(() => { if (requestedCreateType) { openCreate(requestedCreateType); onCreateRequestConsumed?.() } }, [requestedCreateType])
+  const openEdit = (row: Row) => {
+    setCreating(false); setEditing(row); setName(txt(row.name)); setItemType(txt(row.item_type)); setCategoryId(txt(row.category_id)); setSubcategory(txt(row.subcategory)); setProductFamily(txt(row.product_family)); setPurchaseUnitId(txt(row.purchase_unit_id)); setBaseUnitId(txt(row.base_unit_id)); setSellingUnitId(txt(row.selling_unit_id)); setMinimumStock(txt(row.minimum_stock)); setCanBeSold(Boolean(row.can_be_sold)); setCanBeUsed(Boolean(row.can_be_used_in_production)); setIsIntermediate(Boolean(row.is_intermediate)); setIsPerishable(Boolean(row.is_perishable)); setExpiryTracking(Boolean(row.expiry_tracking_enabled)); setExpiryValue(txt(row.expiry_duration_value)); setExpiryUnit(txt(row.expiry_duration_unit || 'months')); setNotes(txt(row.notes)); setPackageType(txt(row.selling_pack_type)); setPackageSize(formatPackSizeDisplay(row.selling_pack_size_kg)); setMessage(''); setError('')
+  }
+  const closeEdit = () => { setEditing(null); setCreating(false) }
+  const save = async () => {
+    setBusy(true); setMessage(''); setError('')
+    if (expiryTracking && (!expiryValue || Number(expiryValue) <= 0)) { setError('Expiry tracking requires a positive duration.'); setBusy(false); return }
+    if (!name.trim() || !itemType || !baseUnitId) { setError('Name, item type and base unit are required.'); setBusy(false); return }
+    let packSizeKg: number | null = null
+    let packTypeVal: string | null = null
+    let packLabelVal: string | null = null
+    if (canBeSold) {
+      if (!packageType.trim()) { setError('Packaging type is required when the item can be sold directly.'); setBusy(false); return }
+      packSizeKg = parsePackSizeToKg(packageSize)
+      if (packSizeKg == null) { setError('Min packing size is required when the item can be sold directly (e.g. 250g or 0.25).'); setBusy(false); return }
+      packTypeVal = packageType.trim()
+      packLabelVal = buildPackLabel(name.trim(), packSizeKg)
+    }
+    const notesVal = notes.trim() || null
+    if (editing) {
+      const { error: e } = await db().rpc('update_master_item', { p_item_id: editing.id, p_name: name.trim(), p_item_type: itemType, p_category_id: categoryId || null, p_subcategory: subcategory.trim() || null, p_product_family: productFamily.trim() || null, p_purchase_unit_id: purchaseUnitId || null, p_base_unit_id: baseUnitId, p_selling_unit_id: sellingUnitId || null, p_minimum_stock: Number(minimumStock || 0), p_can_be_sold: canBeSold, p_can_be_used_in_production: canBeUsed, p_is_intermediate: isIntermediate, p_is_perishable: isPerishable, p_expiry_tracking_enabled: expiryTracking, p_expiry_duration_value: expiryTracking ? Number(expiryValue) : null, p_expiry_duration_unit: expiryTracking ? expiryUnit : null, p_notes: notesVal })
+      if (e) { setBusy(false); setError(e.message); return }
+      const { error: pe } = await db().from('items').update({ selling_pack_size_kg: packSizeKg, selling_pack_type: packTypeVal, selling_pack_label: packLabelVal }).eq('id', editing.id)
+      setBusy(false); if (pe) { setError(pe.message); return }
+      setMessage('Saved. Permanent code was not changed.'); setEditing(null); await load(); return
+    }
+    const { data, error: createError } = await db().from('items').insert({ name: name.trim(), item_type: itemType, category_id: categoryId || null, subcategory: subcategory.trim() || null, product_family: productFamily.trim() || null, purchase_unit_id: purchaseUnitId || null, base_unit_id: baseUnitId, selling_unit_id: sellingUnitId || null, minimum_stock: Number(minimumStock || 0), can_be_sold: canBeSold, can_be_used_in_production: canBeUsed, is_intermediate: isIntermediate, is_perishable: isPerishable, expiry_tracking_enabled: expiryTracking, expiry_duration_value: expiryTracking ? Number(expiryValue) : null, expiry_duration_unit: expiryTracking ? expiryUnit : null, notes: notesVal, selling_pack_size_kg: packSizeKg, selling_pack_type: packTypeVal, selling_pack_label: packLabelVal }).select('item_code,business_code').single()
+    setBusy(false); if (createError) { setError(createError.message); return } setMessage(`Created successfully. Code: ${txt(data?.item_code || data?.business_code)}`); setCreating(false); await load()
+  }
+  const archive = async () => {
+    if (!selected.length) return
+    setBusy(true); setMessage(''); setError('')
+    for (const id of selected) { const { error: e } = await db().rpc('archive_master_record', { p_table: 'items', p_id: id, p_reason: 'Archived from Master Data' }); if (e) { setError(e.message); setBusy(false); setPendingArchive(false); return } }
+    setSelected([]); setBusy(false); setPendingArchive(false); setMessage('Archived successfully.'); await load()
+  }
+  const setItemStatus = async (id: string, active: boolean) => { setBusy(true); setMessage(''); setError(''); const { error: e } = await db().from('items').update({ is_active: active }).eq('id', id); setBusy(false); if (e) setError(e.message); else { setMessage(active ? 'Item set to Active.' : 'Item set to Inactive.'); await load() } }
+  const restore = async (id: string) => { if (!window.confirm('Restore this record to the active list?')) return; setBusy(true); setMessage(''); setError(''); const { error: e } = await db().rpc('restore_master_record', { p_table: 'items', p_id: id }); setBusy(false); if (e) { setError(e.message); return } setMessage('Restored successfully.'); await load() }
+  const unitLabel = (id: string) => { const u = units.find(x => txt(x.id) === id); return u ? `${txt(u.name)} (${txt(u.symbol)})` : '' }
+
+  return <div className="master-manager">
+    <div className="master-header"><div><h2>Item Master</h2><p>Create, edit, activate, inactivate, archive and restore items. Permanent codes and Base Units remain protected.</p></div><div className="table-toolbar-right"><div className="table-toolbar-right"><button className="primary-button" type="button" onClick={() => openCreate('raw_material')}>+ Raw Material</button><button className="primary-button" type="button" onClick={() => openCreate('finished_product')}>+ Finished Product</button><button className="primary-button" type="button" onClick={() => openCreate('intermediate')}>+ Intermediate</button><button className="primary-button" type="button" onClick={() => openCreate('purchased_finished_product')}>+ Purchased Finished Product</button></div><button className="secondary-button" type="button" disabled={!selected.length || view === 'archived' || busy} onClick={() => setPendingArchive(true)}>Archive{selected.length ? ` (${selected.length})` : ''}</button></div></div>
+    <div className="data-table"><div className="table-toolbar"><input className="table-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code or name…" aria-label="Search items by code or name"/><span className="table-count">{filtered.length} record{filtered.length === 1 ? '' : 's'}</span><div className="table-toolbar-right"><button className={view === 'active' ? 'secondary-button tab-active' : 'secondary-button'} onClick={() => { setView('active'); setSelected([]) }}>Active</button><button className={view === 'inactive' ? 'secondary-button tab-active' : 'secondary-button'} onClick={() => { setView('inactive'); setSelected([]) }}>Inactive</button><button className={view === 'archived' ? 'secondary-button tab-active' : 'secondary-button'} onClick={() => { setView('archived'); setSelected([]) }}>Archived</button></div></div><div className="table-wrap"><table><thead><tr>{view !== 'archived' && <th><input type="checkbox" aria-label="Select all visible items" checked={filtered.length > 0 && filtered.every(r => selected.includes(txt(r.id)))} onChange={e => setSelected(e.target.checked ? filtered.map(r => txt(r.id)) : [])}/></th>}<th><button className="table-sort" type="button" onClick={() => chooseSort('item_code')}>Code {sort === 'item_code' ? (ascending ? '↑' : '↓') : '↕'}</button></th><th><button className="table-sort" type="button" onClick={() => chooseSort('name')}>Name {sort === 'name' ? (ascending ? '↑' : '↓') : '↕'}</button></th><th><button className="table-sort" type="button" onClick={() => chooseSort('item_type')}>Type {sort === 'item_type' ? (ascending ? '↑' : '↓') : '↕'}</button></th><th><button className="table-sort" type="button" onClick={() => chooseSort('base_unit_id')}>Unit {sort === 'base_unit_id' ? (ascending ? '↑' : '↓') : '↕'}</button></th><th><button className="table-sort" type="button" onClick={() => chooseSort('is_active')}>Status {sort === 'is_active' ? (ascending ? '↑' : '↓') : '↕'}</button></th><th>Action</th></tr></thead><tbody>{filtered.map(row => <tr key={txt(row.id)}>{view !== 'archived' && <td><input type="checkbox" checked={selected.includes(txt(row.id))} onChange={e => setSelected(v => e.target.checked ? [...new Set([...v,txt(row.id)])] : v.filter(id => id !== txt(row.id)))} aria-label={`Select ${txt(row.name)}`}/></td>}<td>{txt(row.item_code || row.business_code)}</td><td>{txt(row.name)}</td><td>{txt(row.item_type)}</td><td>{unitLabel(txt(row.base_unit_id))}</td><td>{statusOf(row)}</td><td>{view === 'archived' ? <button className="secondary-button" type="button" onClick={() => void restore(txt(row.id))} disabled={busy}>Restore</button> : <><button className="secondary-button" type="button" onClick={() => openEdit(row)} disabled={busy}>Edit</button><button className="secondary-button" type="button" onClick={() => void setItemStatus(txt(row.id), view === 'active' ? false : true)} disabled={busy}>{view === 'active' ? 'Set Inactive' : 'Set Active'}</button></>}</td></tr>)}{!filtered.length && <tr><td colSpan={view === 'archived' ? 7 : 8} className="table-message">No records found.</td></tr>}</tbody></table></div></div>
+    {message && <p className="form-status form-status-success">{message}</p>}{error && <p className="form-status form-status-error">{error}</p>}{pendingArchive && <div className="modal-backdrop" role="presentation"><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="archive-item-title"><div className="modal-header"><h3 id="archive-item-title">Archive selected items?</h3><button className="secondary-button" type="button" onClick={() => setPendingArchive(false)} disabled={busy}>Cancel</button></div><p className="muted">{selected.length} selected record{selected.length === 1 ? '' : 's'} will leave the active list but remain in history. Records with active reservations or active recipe dependencies will be blocked safely.</p><div className="purchase-actions"><button className="secondary-button" type="button" onClick={() => setPendingArchive(false)} disabled={busy}>Cancel</button><button className="primary-button" type="button" onClick={() => void archive()} disabled={busy}>{busy ? 'Archiving…' : 'Confirm Archive'}</button></div></div></div>}
+    {(editing || creating) && <div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><div><h3>{creating ? 'Create Item' : `Edit ${txt(editing?.item_code || editing?.business_code)} — ${txt(editing?.name)}`}</h3><p className="muted">Permanent business code cannot be changed. Base-unit changes after create are controlled; select base unit when creating.</p></div><button className="secondary-button" type="button" onClick={closeEdit} disabled={busy}>Close</button></div><div className="form-grid">
+      <Field label="Name" required><input value={name} onChange={e => setName(e.target.value)}/></Field>
+      <Field label="Item type" required><SearchableSelect value={itemType} options={types.map(t => ({value:txt(t.code),label:txt(t.name),code:txt(t.code),name:txt(t.name)}))} onChange={setItemType} placeholder="Select item type"/></Field>
+      <Field label="Category"><SearchableSelect value={categoryId} options={categories.map(c => ({value:txt(c.id),label:`${txt(c.code)} — ${txt(c.name)}`,code:txt(c.code),name:txt(c.name)}))} onChange={setCategoryId} placeholder="Select category"/></Field>
+      <Field label="Subcategory"><input value={subcategory} onChange={e => setSubcategory(e.target.value)}/></Field>
+      <Field label="Product family"><input value={productFamily} onChange={e => setProductFamily(e.target.value)}/></Field>
+      <Field label="Purchase unit"><SearchableSelect value={purchaseUnitId} options={units.map(u => ({value:txt(u.id),label:`${txt(u.code)} — ${txt(u.name)} (${txt(u.symbol)})`,code:txt(u.code),name:txt(u.name)}))} onChange={setPurchaseUnitId} placeholder="Select purchase unit"/></Field>
+      <Field label="Base unit" required><select value={baseUnitId} onChange={e => setBaseUnitId(e.target.value)} disabled={Boolean(editing)} required><option value="">Select base unit</option>{units.map(u => <option key={txt(u.id)} value={txt(u.id)}>{txt(u.name)} ({txt(u.symbol)})</option>)}</select></Field>
+      <Field label="Selling unit"><SearchableSelect value={sellingUnitId} options={units.map(u => ({value:txt(u.id),label:`${txt(u.code)} — ${txt(u.name)} (${txt(u.symbol)})`,code:txt(u.code),name:txt(u.name)}))} onChange={setSellingUnitId} placeholder="Select selling unit"/></Field>
+      <Field label="Minimum stock"><input type="number" min="0" step="0.001" value={minimumStock} onChange={e => setMinimumStock(e.target.value)}/></Field>
+      {canBeSold && <>
+        <Field label="Packaging type" required>
+          <select value={packageType} onChange={e => setPackageType(e.target.value)} required>
+            <option value="">Select packaging type</option>
+            {PACK_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </Field>
+        <Field label="Min packing size" required>
+          <input value={packageSize} onChange={e => setPackageSize(e.target.value)} placeholder="e.g. 250g or 0.25" required />
+        </Field>
+        <p className="muted" style={{gridColumn:'1 / -1'}}>Required for items that can be sold. Invoice will show pack qty (ordered kg ÷ min pack size) and label like “Nutri Mix 250G”.</p>
+      </>}
+      <Field label="Notes"><input value={notes} onChange={e => setNotes(e.target.value)}/></Field>
+    </div><div className="form-checks"><label><input type="checkbox" checked={canBeSold} onChange={e => setCanBeSold(e.target.checked)}/> Can be sold directly</label><label><input type="checkbox" checked={canBeUsed} onChange={e => setCanBeUsed(e.target.checked)}/> Can be used in production</label><label><input type="checkbox" checked={isIntermediate} onChange={e => setIsIntermediate(e.target.checked)}/> Intermediate / prepared material</label><label><input type="checkbox" checked={isPerishable} onChange={e => setIsPerishable(e.target.checked)}/> Perishable</label><label><input type="checkbox" checked={expiryTracking} onChange={e => setExpiryTracking(e.target.checked)}/> Track expiry</label></div>{expiryTracking && <div className="expiry-duration"><Field label="Expiry duration" required><input type="number" min="0.01" step="0.01" value={expiryValue} onChange={e => setExpiryValue(e.target.value)} required /></Field><Field label="Duration unit" required><select value={expiryUnit} onChange={e => setExpiryUnit(e.target.value)}><option value="days">Days</option><option value="months">Months</option><option value="years">Years</option></select></Field><p className="muted">Uses the existing item shelf-life model.</p></div>}<div className="purchase-actions"><button className="secondary-button" type="button" onClick={closeEdit} disabled={busy}>Cancel</button><button className="primary-button" type="button" onClick={() => void save()} disabled={busy || !name.trim() || !itemType || !baseUnitId}>{busy ? 'Saving…' : creating ? 'Create item' : 'Save changes'}</button></div>
+      {(!name.trim() || !itemType || !baseUnitId) && <p className="muted">To save: enter Name, choose Item type, and select Base unit.</p>}
+    </div></div>}
+  </div>
+}
