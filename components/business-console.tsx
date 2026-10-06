@@ -30,7 +30,9 @@ function Dual({ title, a, b, al, bl }: { title: string; a: string; b: string; al
 
 function Masters() {
   const [table, setTable] = useState<(typeof masterTables)[number]>('items')
-  return <Page title="Masters & Settings"><ProductCatalogue /><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} />}</Page>
+  const [requestedCreateType, setRequestedCreateType] = useState<string | null>(null)
+  const requestCreate = (itemType: string) => { setTable('items'); setRequestedCreateType(itemType) }
+  return <Page title="Masters & Settings"><ProductCatalogue onCreateItem={requestCreate} /><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} requestedCreateType={requestedCreateType} onCreateRequestConsumed={() => setRequestedCreateType(null)} />}</Page>
 }
 
 function Dashboard() {
