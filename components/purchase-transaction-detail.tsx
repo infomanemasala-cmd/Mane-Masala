@@ -16,10 +16,12 @@ export default function PurchaseTransactionDetail({id}:{id:string}){
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(false),[openReturn,setOpenReturn]=useState(false),[openReceipt,setOpenReceipt]=useState(false),[receiptDraft,setReceiptDraft]=useState<Row[]>([])
  const [returnLine,setReturnLine]=useState(''),[returnQty,setReturnQty]=useState(''),[source,setSource]=useState('rejected_receipt'),[reason,setReason]=useState('Damage / quality issue'),[credit,setCredit]=useState('0')
  const load=async()=>{
+  setError(false);setMessage('')
   const {data,error:e}=await db().from('purchases').select('*').eq('id',id).single();if(e){setError(true);setMessage(e.message);return}setRow(data)
   if(data?.supplier_id){const {data:s}=await db().from('suppliers').select('id,business_code,business_name,phone,email,address').eq('id',data.supplier_id).single();setSupplier(s??null)}
-  // Schema has line_notes (not notes). Selecting notes made lines silently empty while SQL still showed rows.
-  const {data:pl,error:ple}=await db().from('purchase_lines').select('id,item_id,billed_quantity,unit_id,unit_rate,line_total,line_notes,discount_amount,tax_amount,created_at').eq('purchase_id',id).order('created_at')
+  // LIVE may lag repo schema: do NOT select notes/line_notes (either can be missing).
+  // Core columns only so items always load when rows exist.
+  const {data:pl,error:ple}=await db().from('purchase_lines').select('id,item_id,billed_quantity,unit_id,unit_rate,line_total,discount_amount,tax_amount,created_at').eq('purchase_id',id).order('created_at')
   if(ple){setError(true);setMessage('Could not load purchase items: '+ple.message);setLines([]);return}
   setLines(pl??[])
   const ids=[...new Set((pl??[]).map(x=>txt(x.item_id)).filter(Boolean))];if(ids.length){const {data:it}=await db().from('items').select('id,item_code,business_code,name').in('id',ids);setItems(Object.fromEntries((it??[]).map(x=>[txt(x.id),x])))}
