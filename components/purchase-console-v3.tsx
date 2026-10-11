@@ -11,7 +11,7 @@ const today=()=>new Date().toISOString().slice(0,10)
 const n=(v:any)=>Number(v||0)
 const txt=(v:any)=>String(v??'')
 const money=(v:any)=>`₹ ${n(v).toFixed(2)}`
-function Field({label,children,help}:{label:string;children:ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small className="muted">{help}</small>}</label>}
+function Field({label,children,help}:{label:string;children:ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small className="muted">{help}</small></label>}
 function Modal({title,close,children}:{title:string;close:()=>void;children:ReactNode}){return <div className="modal-backdrop"><div className="modal-card purchase-modal"><div className="modal-header"><div><h3>{title}</h3></div><button className="secondary-button" type="button" onClick={close}>Cancel</button></div>{children}</div></div>}
 const blank=()=>({itemId:'',qty:'',rate:'',discount:'0',gstRate:'',tax:'0',notes:''})
 
@@ -35,7 +35,32 @@ export default function PurchaseConsoleV3(){
  const filteredItems=useMemo(()=>{const q=itemSearch.trim().toLowerCase();if(!q)return items;return items.filter(it=>`${txt(it.item_code)} ${txt(it.business_code)} ${txt(it.name)}`.toLowerCase().includes(q))},[items,itemSearch])
  const save=async()=>{setMessage('');setError(false);const valid=lines.filter(l=>l.itemId&&n(l.qty)>0);if(!supplierId){setError(true);setMessage('Please select the supplier.');return}if(!valid.length){setError(true);setMessage('Add at least one purchased item with quantity.');return}setSaving(true);const {data,error:e}=await db().rpc('create_purchase_entry',{p_supplier_id:supplierId,p_purchase_date:date,p_supplier_invoice_number:slip.trim()||null,p_purchase_source:source,p_lines:valid.map(l=>({item_id:l.itemId,billed_quantity:n(l.qty),unit_rate:l.rate===''?null:n(l.rate),discount_amount:lineDisc(l),tax_rate:n(l.gstRate),tax_amount:0,notes:txt(l.notes).trim()||null,unit_id:l.unitId||null})),p_discount_amount:n(discount),p_delivery_charge:n(delivery),p_transport_charge:n(transport),p_loading_charge:n(loading),p_unloading_charge:n(unloading),p_packing_charge:n(packing),p_other_charge:n(other),p_tax_amount:n(tax),p_notes:notes.trim()||null});setSaving(false);if(e||!data){setError(true);setMessage(e?.message||'Could not save purchase.');return}const pid=txt(data.purchase_id);setPurchase({...data,id:pid});const {data:pl,error:pe}=await db().from('purchase_lines').select('id,item_id,billed_quantity,unit_id,unit_rate,line_total').eq('purchase_id',pid).order('created_at');if(pe){setError(true);setMessage(pe.message);return}if(!(pl&&pl.length)){setError(true);setMessage(`Purchase ${txt(data.business_code)||pid} created but items did not save. Confirm migration 20261009120000 is applied.`);return}setReceiptLines((pl??[]).map(x=>({...x,received_quantity:txt(x.billed_quantity),accepted_quantity:txt(x.billed_quantity),rejected_quantity:'0',inspection_notes:''})));setSettlement([]);setStep('receipt');setMessage(`Purchase ${txt(data.business_code)||pid} saved with ${pl.length} item(s). Confirm what arrived — Accepted qty posts stock.`)}
  const receive=async()=>{if(!purchase){setError(true);setMessage('Purchase is not loaded. Please reopen it.');return}for(const l of receiptLines){const r=n(l.received_quantity),a=n(l.accepted_quantity),rej=n(l.rejected_quantity);if(r<0||r>n(l.billed_quantity)||a<0||rej<0||a+rej!==r){setError(true);setMessage('For each item, Received cannot exceed Billed and Accepted + Rejected / damaged must equal Received.');return}}setSaving(true);const {error:e}=await db().rpc('receive_purchase',{p_purchase_id:purchase.id,p_lines:receiptLines.map(l=>({purchase_line_id:l.id,received_quantity:n(l.received_quantity),accepted_quantity:n(l.accepted_quantity),rejected_quantity:n(l.rejected_quantity),replacement_quantity:0,received_batch_date:date,notes:txt(l.inspection_notes)||null})),p_received_at:new Date().toISOString()});setSaving(false);if(e){setError(true);setMessage(e.message);return}const next=receiptLines.map(l=>{const billed=n(l.billed_quantity),received=n(l.received_quantity),rejected=n(l.rejected_quantity),affected=Math.max(0,billed-received)+rejected;const value=billed>0?n(l.line_total)*affected/billed:0;return {...l,shortage:Math.max(0,billed-received),affected,adjustment:value,supplierResponse:affected?'pending':'not_required',settlement:affected?'credit':'',supplierNotes:''}});setSettlement(next);setStep('settlement');setError(false);setMessage('Receipt recorded. Accepted quantities are now in stock. Review any shortage or rejected quantity before completing the purchase.')}
- const finalize=async()=>{if(!purchase){setError(true);setMessage('Purchase is not loaded. Please reopen it.');return}setSaving(true);const {data,error:e}=await db().rpc('finalize_purchase_review',{p_purchase_id:purchase.id,p_lines:settlement.map(l=>({receipt_line_id:l.id,supplier_response:l.supplierResponse,supplier_settlement:l.supplierResponse==='accepted'?l.settlement:null,supplier_response_notes:l.supplierNotes||null}))});setSaving(false);if(e){setError(true);setMessage(e.message);return}setStep('done');setError(false);setMessage(`Purchase review saved. Agreed supplier adjustment: ${money(n(data?.supplier_credit_amount)+n(data?.supplier_refund_amount))}. Disputed / pending: ${money(data?.supplier_disputed_amount)}.`)}
+ const finalize=async()=>{
+  if(!purchase){setError(true);setMessage('Purchase is not loaded. Please reopen it.');return}
+  setSaving(true);setError(false);setMessage('')
+  // Complete in this same step — do not force user back to Purchases list.
+  const hasIssues=settlement.some(l=>n(l.affected)>0)
+  if(hasIssues){
+    const {data,error:e}=await db().rpc('finalize_purchase_review',{p_purchase_id:purchase.id,p_lines:settlement.map(l=>({receipt_line_id:l.id,supplier_response:l.supplierResponse,supplier_settlement:l.supplierResponse==='accepted'?l.settlement:null,supplier_response_notes:l.supplierNotes||null}))})
+    if(e){
+      const {error:e2}=await db().rpc('complete_purchase_inspection',{p_purchase_id:purchase.id})
+      setSaving(false)
+      if(e2){setError(true);setMessage(e.message);return}
+      setStep('done');setError(false);setMessage(`Purchase ${txt(purchase.business_code)||''} completed.`)
+      return
+    }
+    // Also ensure completed if finalize did not set it
+    await db().rpc('complete_purchase_inspection',{p_purchase_id:purchase.id})
+    setSaving(false);setStep('done');setError(false)
+    setMessage(`Purchase review saved and completed. Agreed supplier adjustment: ${money(n(data?.supplier_credit_amount)+n(data?.supplier_refund_amount))}.`)
+    return
+  }
+  const {error:e}=await db().rpc('complete_purchase_inspection',{p_purchase_id:purchase.id})
+  setSaving(false)
+  if(e){setError(true);setMessage(e.message);return}
+  setStep('done');setError(false)
+  setMessage(`Purchase ${txt(purchase.business_code)||''} completed. Accepted stock is in Inventory.`)
+ }
  const reset=()=>{setOpen(false);setStep('entry');setSupplierId('');setSupplierSearch('');setItemSearch('');setSlip('');setNotes('');setLines([blank()]);setPurchase(null);setReceiptLines([]);setSettlement([]);setDiscount('0');setTax('0');setDelivery('0');setTransport('0');setLoading('0');setUnloading('0');setPacking('0');setOther('0');setMessage('');setError(false)}
  return <section className="page-panel">
   <div className="master-header"><div><div className="section-label">Mane Masala</div><h1>Purchases</h1><p className="page-intro">Record what you bought, check what arrived, and let the system calculate the supplier adjustment.</p></div><button className="primary-button" type="button" onClick={()=>setOpen(true)}>New purchase</button></div>
