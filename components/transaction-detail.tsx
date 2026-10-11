@@ -11,9 +11,18 @@ const label = (k:string) => k.replaceAll('_',' ').replace(/\b\w/g, l => l.toUppe
 const num = (v:any) => Number(v || 0)
 const money = (v:any) => `₹ ${num(v).toFixed(2)}`
 
+// Internal UUID / system keys — not shown as primary labels in production UI
+const HIDDEN_DETAIL_KEYS = new Set([
+  'id','created_at','updated_at','created_by','approved_by','confirmed_by',
+  'order_id','order_line_id','output_item_id','output_unit_id','recipe_version_id',
+  'ingredient_item_id','unit_id','customer_id','supplier_id',
+])
+
 export default function TransactionDetail({ table, id }: { table:string; id:string }) {
   const [row,setRow] = useState<Row|null>(null)
   const [plan,setPlan] = useState<Row[]>([])
+  const [itemNames,setItemNames] = useState<Record<string,Row>>({})
+  const [unitNames,setUnitNames] = useState<Record<string,Row>>({})
   const [purchaseLines,setPurchaseLines] = useState<Row[]>([])
   const [purchaseItems,setPurchaseItems] = useState<Record<string,Row>>({})
   const [receipt,setReceipt] = useState<Row|null>(null)
@@ -25,7 +34,7 @@ export default function TransactionDetail({ table, id }: { table:string; id:stri
 
   const load = async () => {
     const key = table === 'v_inventory_current' ? 'item_id' : 'id'
-    const source = table === 'v_purchases_list' ? 'purchases' : table
+    const source = table === 'v_purchases_list' ? 'purchases' : table === 'v_production_batches_list' ? 'production_batches' : table
     const {data,error:e} = await db().from(source).select('*').eq(key,id).single()
     if(e){setError(true);setMessage(e.message);return}
     setRow(data)
@@ -33,8 +42,24 @@ export default function TransactionDetail({ table, id }: { table:string; id:stri
     if(table==='production_batches' || table==='v_production_batches_list'){
       setActualOutput(txt(data?.planned_output_quantity))
       const {data:p} = await db().from('production_batch_plan_lines').select('id,ingredient_item_id,planned_quantity,unit_id').eq('production_batch_id',id).order('id')
-      setPlan(p??[])
-      setActuals(Object.fromEntries((p??[]).map(x=>[txt(x.id),txt(x.planned_quantity)])))
+      const lines = p??[]
+      setPlan(lines)
+      setActuals(Object.fromEntries(lines.map(x=>[txt(x.id),txt(x.planned_quantity)])))
+
+      const ingredientIds = [...new Set(lines.map(x=>txt(x.ingredient_item_id)).filter(Boolean))]
+      const unitIds = [...new Set(lines.map(x=>txt(x.unit_id)).filter(Boolean))]
+      if (data?.output_item_id) ingredientIds.push(txt(data.output_item_id))
+      if (data?.output_unit_id) unitIds.push(txt(data.output_unit_id))
+
+      if (ingredientIds.length) {
+        const { data: its } = await db().from('items').select('id,item_code,business_code,name').in('id', ingredientIds)
+        setItemNames(Object.fromEntries((its??[]).map(x=>[txt(x.id),x])))
+      } else setItemNames({})
+
+      if (unitIds.length) {
+        const { data: uns } = await db().from('units').select('id,name,symbol').in('id', unitIds)
+        setUnitNames(Object.fromEntries((uns??[]).map(x=>[txt(x.id),x])))
+      } else setUnitNames({})
     }
 
     if(table==='purchases' || table==='v_purchases_list'){
@@ -82,10 +107,15 @@ export default function TransactionDetail({ table, id }: { table:string; id:stri
 
   if(!row) return <section className="page-panel"><p>{message||'Loading transaction…'}</p></section>
 
-  const fields = Object.entries(row).filter(([k])=>!['id','created_at','updated_at','created_by','approved_by','confirmed_by'].includes(k))
+  const isProduction = table==='production_batches' || table==='v_production_batches_list'
   const isPurchase = table==='purchases' || table==='v_purchases_list'
   const purchaseComplete = txt(row.workflow_status)==='completed'
   const purchaseNeedsCompletion = txt(row.workflow_status)==='inspected_stock'
+
+  // Human-friendly detail fields for production (hide UUIDs)
+  const fields = Object.entries(row).filter(([k])=>!HIDDEN_DETAIL_KEYS.has(k))
+  const outputItem = itemNames[txt(row.output_item_id)]
+  const outputUnit = unitNames[txt(row.output_unit_id)]
 
   return <section className="page-panel">
     <div className="master-header">
@@ -95,7 +125,21 @@ export default function TransactionDetail({ table, id }: { table:string; id:stri
 
     <div className="console-panel">
       <div className="panel-heading"><h2>Transaction details</h2></div>
-      <div className="form-grid">{fields.map(([k,v])=><div className="field" key={k}><span>{label(k)}</span><input value={typeof v==='object'&&v!==null?JSON.stringify(v):txt(v)} readOnly /></div>)}</div>
+      <div className="form-grid">
+        {isProduction && <>
+          <div className="field"><span>Business Code</span><input value={txt(row.business_code)} readOnly /></div>
+          <div className="field"><span>Production Date</span><input value={txt(row.production_date)} readOnly /></div>
+          <div className="field"><span>Planned Output Quantity</span><input value={txt(row.planned_output_quantity)} readOnly /></div>
+          <div className="field"><span>Actual Output Quantity</span><input value={txt(row.actual_output_quantity)} readOnly /></div>
+          <div className="field"><span>Status</span><input value={txt(row.status)} readOnly /></div>
+          <div className="field"><span>Wife Approval Status</span><input value={txt(row.wife_approval_status)} readOnly /></div>
+          <div className="field"><span>Output Item</span><input value={outputItem ? `${txt(outputItem.item_code||outputItem.business_code)} — ${txt(outputItem.name)}` : txt(row.output_item_code||row.output_item_name)||'—'} readOnly /></div>
+          <div className="field"><span>Output Unit</span><input value={outputUnit ? `${txt(outputUnit.name)} (${txt(outputUnit.symbol)})` : '—'} readOnly /></div>
+          <div className="field"><span>Order Code</span><input value={txt(row.order_code)||'—'} readOnly /></div>
+          <div className="field"><span>Recipe Version</span><input value={txt(row.recipe_version)||'—'} readOnly /></div>
+        </>}
+        {!isProduction && fields.map(([k,v])=><div className="field" key={k}><span>{label(k)}</span><input value={typeof v==='object'&&v!==null?JSON.stringify(v):txt(v)} readOnly /></div>)}
+      </div>
     </div>
 
     {isPurchase && <>
@@ -121,7 +165,20 @@ export default function TransactionDetail({ table, id }: { table:string; id:stri
       </div>
     </>}
 
-    {productionAction && <div className="console-panel"><div className="panel-heading"><h2>Next action</h2></div>{(table==='production_batches'||table==='v_production_batches_list')&&<><div className="form-grid"><div className="field"><span>Actual output</span><input type="number" min="0" step="0.001" value={actualOutput} onChange={e=>setActualOutput(e.target.value)} /></div></div>{plan.map(p=><div className="purchase-line" key={txt(p.id)}><div className="field"><span>Ingredient</span><input value={txt(p.ingredient_item_id)} readOnly /></div><div className="field"><span>Planned</span><input value={txt(p.planned_quantity)} readOnly /></div><div className="field"><span>Actual</span><input type="number" min="0" step="0.001" value={actuals[txt(p.id)]||''} onChange={e=>setActuals(x=>({...x,[txt(p.id)]:e.target.value}))} /></div></div>)}</>}<button className="primary-button" type="button" disabled={busy} onClick={()=>void action(productionAction.rpc,productionAction.args)}>{busy?'Processing…':productionAction.label}</button></div>}
+    {productionAction && <div className="console-panel"><div className="panel-heading"><h2>Next action</h2></div>{isProduction&&<><div className="form-grid"><div className="field"><span>Actual output</span><input type="number" min="0" step="0.001" value={actualOutput} onChange={e=>setActualOutput(e.target.value)} /></div></div>
+      <div className="table-wrap" style={{marginTop:12}}><table><thead><tr><th>Ingredient</th><th>Unit</th><th>Planned</th><th>Actual</th></tr></thead><tbody>
+        {plan.map(p=>{
+          const it=itemNames[txt(p.ingredient_item_id)]||{}
+          const un=unitNames[txt(p.unit_id)]||{}
+          return <tr key={txt(p.id)}>
+            <td><strong>{txt(it.item_code||it.business_code)}</strong>{txt(it.name)?` — ${txt(it.name)}`:''}</td>
+            <td>{txt(un.symbol||un.name)||'—'}</td>
+            <td>{txt(p.planned_quantity)}</td>
+            <td><input className="table-input" type="number" min="0" step="0.001" value={actuals[txt(p.id)]||''} onChange={e=>setActuals(x=>({...x,[txt(p.id)]:e.target.value}))} /></td>
+          </tr>
+        })}
+      </tbody></table></div>
+    </>}<button className="primary-button" type="button" disabled={busy} onClick={()=>void action(productionAction.rpc,productionAction.args)} style={{marginTop:12}}>{busy?'Processing…':productionAction.label}</button></div>}
 
     {(table==='customer_payments'||table==='supplier_payments') ? <div className="console-panel"><div className="panel-heading"><h2>Payment actions</h2></div><Link className="secondary-button" href="/dashboard">Open reconciliation</Link></div>:null}
     {table==='v_inventory_current'||table==='inventory_transactions' ? <div className="console-panel"><div className="panel-heading"><h2>Inventory action</h2></div><Link className="primary-button" href="/inventory">Open Stock Action</Link></div>:null}
