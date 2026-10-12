@@ -6,9 +6,10 @@ import DataTable from '@/components/data-table'
 import MasterManager from '@/components/master-manager'
 import ProductCatalogue from '@/components/product-catalogue'
 import RecipeManager from '@/components/recipe-manager'
+import PriceListManager from '@/components/price-list-manager'
 
 type Module = 'dashboard' | 'masters' | 'purchases' | 'inventory' | 'production' | 'orders' | 'sales' | 'payments' | 'reports'
-const masterTables = ['items', 'suppliers', 'customers', 'units', 'categories', 'sub_agents', 'recipes'] as const
+const masterTables = ['items', 'suppliers', 'customers', 'units', 'categories', 'sub_agents', 'recipes', 'price_list'] as const
 
 type Row = Record<string, unknown>
 
@@ -32,7 +33,8 @@ function Masters() {
   const [table, setTable] = useState<(typeof masterTables)[number]>('items')
   const [requestedCreateType, setRequestedCreateType] = useState<string | null>(null)
   const requestCreate = (itemType: string) => { setTable('items'); setRequestedCreateType(itemType) }
-  return <Page title="Masters & Settings"><ProductCatalogue onCreateItem={requestCreate} /><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{name.replaceAll('_', ' ')}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : <MasterManager table={table} requestedCreateType={requestedCreateType} onCreateRequestConsumed={() => setRequestedCreateType(null)} />}</Page>
+  const tabLabel = (name: string) => name === 'price_list' ? 'price list' : name.replaceAll('_', ' ')
+  return <Page title="Masters & Settings"><ProductCatalogue onCreateItem={requestCreate} /><div className="master-tabs">{masterTables.map((name) => <button key={name} className={table === name ? 'tab-active' : ''} onClick={() => setTable(name)}>{tabLabel(name)}</button>)}</div>{table === 'recipes' ? <RecipeManager /> : table === 'price_list' ? <PriceListManager /> : <MasterManager table={table} requestedCreateType={requestedCreateType} onCreateRequestConsumed={() => setRequestedCreateType(null)} />}</Page>
 }
 
 function Dashboard() {
