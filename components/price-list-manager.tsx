@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type R = Record<string, any>
@@ -13,405 +13,693 @@ const CUSTOMER_TYPES = [
   ['retail_shop', 'Retail shop'],
   ['restaurant', 'Restaurant'],
   ['caterer', 'Caterer'],
-  ['online_customer', 'Online customer'],
-  ['sub_agent', 'Sub-agent (identity only)'],
+  ['online_customer', 'Online'],
+  ['sub_agent', 'Sub-agent'],
 ] as const
 
-function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-      {help ? <small className="muted">{help}</small> : null}
-    </label>
-  )
+type Ct = (typeof CUSTOMER_TYPES)[number][0]
+type Mode = 'fixed' | 'percent' | ''
+
+type Cell = {
+  id?: string
+  mode: Mode
+  value: string
+  rateBasis: 'kg' | 'pack'
+  isActive: boolean
+  dirty?: boolean
+}
+
+type DraftMap = Record<string, Cell>
+
+function cellKey(itemId: string, ct: string) {
+  return `${itemId}::${ct}`
+}
+
+function fmtMoney(v: number | null | undefined) {
+  if (v == null || Number.isNaN(Number(v))) return '—'
+  return Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+}
+
+function computePreview(item: R, cell: Cell | undefined): number | null {
+  if (!cell || !cell.mode) return item.default_selling_rate != null ? n(item.default_selling_rate) : null
+  if (cell.mode === 'percent') {
+    const d = n(item.default_selling_rate)
+    if (!d) return null
+    return Math.round(d * (n(cell.value) / 100) * 1e6) / 1e6
+  }
+  let price = n(cell.value)
+  if (cell.rateBasis === 'pack') {
+    const pack = n(item.selling_pack_size_kg)
+    if (pack > 0) price = price / pack
+  }
+  return price
 }
 
 export default function PriceListManager() {
   const [items, setItems] = useState<R[]>([])
-  const [rows, setRows] = useState<R[]>([])
-  const [filterItem, setFilterItem] = useState('')
-  const [filterType, setFilterType] = useState('')
+  const [draft, setDraft] = useState<DraftMap>({})
+  const [search, setSearch] = useState('')
+  const [onlyMissing, setOnlyMissing] = useState(false)
+  const [onlyDirty, setOnlyDirty] = useState(false)
+  const [visibleTypes, setVisibleTypes] = useState<string[]>(CUSTOMER_TYPES.map((c) => c[0]))
   const [message, setMessage] = useState('')
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<R | null>(null)
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
+  const [bulkMode, setBulkMode] = useState<'percent' | 'fixed'>('percent')
+  const [bulkValue, setBulkValue] = useState('90')
+  const [bulkCt, setBulkCt] = useState<string>('__all__')
+  const [bulkBasis, setBulkBasis] = useState<'kg' | 'pack'>('kg')
 
-  const [itemId, setItemId] = useState('')
-  const [customerType, setCustomerType] = useState('retail_shop')
-  const [priceMode, setPriceMode] = useState<'fixed' | 'percent'>('fixed')
-  const [unitPrice, setUnitPrice] = useState('')
-  const [percent, setPercent] = useState('100')
-  const [rateBasis, setRateBasis] = useState<'kg' | 'pack'>('kg')
-  const [notes, setNotes] = useState('')
-  const [isActive, setIsActive] = useState(true)
-
-  const load = async () => {
+  const load = useCallback(async () => {
     const x = db()
     const [i, p] = await Promise.all([
       x
         .from('items')
-        .select('id,item_code,business_code,name,can_be_sold,is_active,default_selling_rate,selling_pack_size_kg,selling_pack_label')
+        .select(
+          'id,item_code,business_code,name,can_be_sold,is_active,default_selling_rate,selling_pack_size_kg,selling_pack_label,selling_pack_type',
+        )
         .eq('is_active', true)
         .eq('can_be_sold', true)
         .order('name'),
-      x.from('item_customer_type_prices').select('*').order('customer_type'),
+      x.from('item_customer_type_prices').select('*'),
     ])
-    if (i.error) {
+    if (i.error || p.error) {
       setError(true)
-      setMessage(i.error.message)
-      return
-    }
-    if (p.error) {
-      setError(true)
-      setMessage(p.error.message)
+      setMessage(i.error?.message || p.error?.message || 'Load failed')
       return
     }
     setItems(i.data ?? [])
-    setRows(p.data ?? [])
+    const next: DraftMap = {}
+    for (const r of p.data ?? []) {
+      const mode = (s(r.price_mode) === 'percent' ? 'percent' : 'fixed') as Mode
+      next[cellKey(s(r.item_id), s(r.customer_type))] = {
+        id: s(r.id),
+        mode,
+        value: mode === 'percent' ? String(r.percent_of_default ?? '') : String(r.unit_price ?? ''),
+        rateBasis: s(r.rate_basis) === 'pack' ? 'pack' : 'kg',
+        isActive: r.is_active !== false,
+        dirty: false,
+      }
+    }
+    setDraft(next)
     setError(false)
     setMessage('')
-  }
+    setSelectedItems([])
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
-  const itemMap = useMemo(() => {
-    const m = new Map<string, R>()
-    for (const it of items) m.set(s(it.id), it)
-    return m
-  }, [items])
+  const dirtyCount = useMemo(() => Object.values(draft).filter((c) => c.dirty).length, [draft])
 
-  const typeLabel = (code: string) => CUSTOMER_TYPES.find(([v]) => v === code)?.[1] || code
-
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (filterItem && s(r.item_id) !== filterItem) return false
-      if (filterType && s(r.customer_type) !== filterType) return false
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return items.filter((it) => {
+      if (q) {
+        const hay = `${s(it.name)} ${s(it.item_code)} ${s(it.business_code)}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      if (onlyDirty) {
+        const anyDirty = CUSTOMER_TYPES.some(([ct]) => draft[cellKey(s(it.id), ct)]?.dirty)
+        if (!anyDirty) return false
+      }
+      if (onlyMissing) {
+        const missing = CUSTOMER_TYPES.some(([ct]) => {
+          if (!visibleTypes.includes(ct)) return false
+          const c = draft[cellKey(s(it.id), ct)]
+          return !c || !c.mode || !c.isActive
+        })
+        if (!missing) return false
+      }
       return true
     })
-  }, [rows, filterItem, filterType])
+  }, [items, search, onlyMissing, onlyDirty, draft, visibleTypes])
 
-  const selectedItem = itemMap.get(itemId)
-  const defaultRate = n(selectedItem?.default_selling_rate)
-  const previewRate = useMemo(() => {
-    if (priceMode === 'percent') {
-      if (!defaultRate || !n(percent)) return null
-      return +(defaultRate * (n(percent) / 100)).toFixed(4)
-    }
-    if (!n(unitPrice) && unitPrice !== '0') return null
-    if (rateBasis === 'pack' && n(selectedItem?.selling_pack_size_kg) > 0) {
-      return +(n(unitPrice) / n(selectedItem?.selling_pack_size_kg)).toFixed(4)
-    }
-    return n(unitPrice)
-  }, [priceMode, percent, unitPrice, rateBasis, defaultRate, selectedItem])
-
-  const resetForm = () => {
-    setEditing(null)
-    setItemId('')
-    setCustomerType('retail_shop')
-    setPriceMode('fixed')
-    setUnitPrice('')
-    setPercent('100')
-    setRateBasis('kg')
-    setNotes('')
-    setIsActive(true)
+  const setCell = (itemId: string, ct: string, patch: Partial<Cell>) => {
+    const key = cellKey(itemId, ct)
+    setDraft((prev) => {
+      const cur = prev[key] || { mode: '' as Mode, value: '', rateBasis: 'kg' as const, isActive: true }
+      return { ...prev, [key]: { ...cur, ...patch, dirty: true } }
+    })
   }
 
-  const openCreate = () => {
-    resetForm()
-    setOpen(true)
-    setMessage('')
+  const clearCell = (itemId: string, ct: string) => {
+    const key = cellKey(itemId, ct)
+    setDraft((prev) => {
+      const cur = prev[key]
+      if (!cur) return prev
+      return {
+        ...prev,
+        [key]: { ...cur, mode: '', value: '', dirty: true, isActive: false },
+      }
+    })
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedItems((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const selectAllVisible = () => {
+    const ids = filteredItems.map((i) => s(i.id))
+    const allSelected = ids.length > 0 && ids.every((id) => selectedItems.includes(id))
+    setSelectedItems(allSelected ? [] : ids)
+  }
+
+  const applyBulk = () => {
+    const targets = selectedItems.length ? selectedItems : filteredItems.map((i) => s(i.id))
+    if (!targets.length) {
+      setError(true)
+      setMessage('Select products (checkboxes) or clear filters so the visible list is the target.')
+      return
+    }
+    if (bulkMode === 'percent' && !(n(bulkValue) > 0)) {
+      setError(true)
+      setMessage('Bulk percent must be greater than 0.')
+      return
+    }
+    if (bulkMode === 'fixed' && !(n(bulkValue) >= 0)) {
+      setError(true)
+      setMessage('Bulk fixed price must be 0 or more.')
+      return
+    }
+    const types = bulkCt === '__all__' ? visibleTypes : [bulkCt]
+    setDraft((prev) => {
+      const next = { ...prev }
+      for (const itemId of targets) {
+        for (const ct of types) {
+          const key = cellKey(itemId, ct)
+          const cur = next[key] || { mode: '' as Mode, value: '', rateBasis: 'kg' as const, isActive: true }
+          next[key] = {
+            ...cur,
+            mode: bulkMode,
+            value: bulkValue,
+            rateBasis: bulkMode === 'fixed' ? bulkBasis : 'kg',
+            isActive: true,
+            dirty: true,
+          }
+        }
+      }
+      return next
+    })
     setError(false)
+    setMessage(
+      `Applied ${bulkMode === 'percent' ? bulkValue + '%' : '₹' + bulkValue} to ${targets.length} product(s) × ${types.length} type(s). Click Save all to persist.`,
+    )
   }
 
-  const openEdit = (r: R) => {
-    setEditing(r)
-    setItemId(s(r.item_id))
-    setCustomerType(s(r.customer_type) || 'retail_shop')
-    setPriceMode((s(r.price_mode) === 'percent' ? 'percent' : 'fixed') as 'fixed' | 'percent')
-    setUnitPrice(r.unit_price != null ? String(r.unit_price) : '')
-    setPercent(r.percent_of_default != null ? String(r.percent_of_default) : '100')
-    setRateBasis((s(r.rate_basis) === 'pack' ? 'pack' : 'kg') as 'kg' | 'pack')
-    setNotes(s(r.notes))
-    setIsActive(r.is_active !== false)
-    setOpen(true)
-    setMessage('')
-    setError(false)
+  const fillFromDefault = (pct: number) => {
+    const targets = selectedItems.length ? selectedItems : filteredItems.map((i) => s(i.id))
+    const types = bulkCt === '__all__' ? visibleTypes : [bulkCt]
+    setDraft((prev) => {
+      const next = { ...prev }
+      for (const itemId of targets) {
+        for (const ct of types) {
+          const key = cellKey(itemId, ct)
+          const cur = next[key] || { mode: '' as Mode, value: '', rateBasis: 'kg' as const, isActive: true }
+          next[key] = {
+            ...cur,
+            mode: 'percent',
+            value: String(pct),
+            rateBasis: 'kg',
+            isActive: true,
+            dirty: true,
+          }
+        }
+      }
+      return next
+    })
+    setMessage(`Set ${pct}% of default for ${targets.length} product(s). Click Save all.`)
   }
 
-  const save = async () => {
-    if (!itemId) {
-      setError(true)
-      setMessage('Select a product.')
+  const saveAll = async () => {
+    const dirtyEntries = Object.entries(draft).filter(([, c]) => c.dirty)
+    if (!dirtyEntries.length) {
+      setMessage('No changes to save.')
       return
     }
-    if (!customerType) {
-      setError(true)
-      setMessage('Select a customer type.')
-      return
-    }
-    if (priceMode === 'fixed' && !(n(unitPrice) >= 0) && unitPrice !== '0') {
-      setError(true)
-      setMessage('Enter a fixed price (0 or more).')
-      return
-    }
-    if (priceMode === 'percent' && !(n(percent) > 0)) {
-      setError(true)
-      setMessage('Enter a percent greater than 0 (e.g. 90 = 90% of default rate).')
-      return
-    }
-    if (priceMode === 'percent' && !defaultRate) {
-      setError(true)
-      setMessage('This product has no default selling rate. Set default_selling_rate on Item Master first, or use Fixed price.')
-      return
-    }
-
-    const payload = {
-      item_id: itemId,
-      customer_type: customerType,
-      price_mode: priceMode,
-      unit_price: priceMode === 'fixed' ? n(unitPrice) : null,
-      percent_of_default: priceMode === 'percent' ? n(percent) : null,
-      rate_basis: priceMode === 'fixed' ? rateBasis : 'kg',
-      notes: notes.trim() || null,
-      is_active: isActive,
-      updated_at: new Date().toISOString(),
-    }
-
     setBusy(true)
+    setError(false)
+    setMessage('')
     const x = db()
-    let e: { message: string } | null = null
-    if (editing) {
-      const res = await x.from('item_customer_type_prices').update(payload).eq('id', editing.id)
-      e = res.error
+    const now = new Date().toISOString()
+    let failed = 0
+    let saved = 0
+    let removed = 0
+
+    for (const [key, cell] of dirtyEntries) {
+      const [itemId, customerType] = key.split('::')
+      if (!cell.mode || cell.value === '') {
+        if (cell.id) {
+          const { error: e } = await x.from('item_customer_type_prices').delete().eq('id', cell.id)
+          if (e) failed++
+          else removed++
+        }
+        continue
+      }
+      if (cell.mode === 'percent' && !(n(cell.value) > 0)) {
+        failed++
+        continue
+      }
+      if (cell.mode === 'fixed' && !(n(cell.value) >= 0)) {
+        failed++
+        continue
+      }
+      const payload = {
+        item_id: itemId,
+        customer_type: customerType,
+        price_mode: cell.mode,
+        unit_price: cell.mode === 'fixed' ? n(cell.value) : null,
+        percent_of_default: cell.mode === 'percent' ? n(cell.value) : null,
+        rate_basis: cell.mode === 'fixed' ? cell.rateBasis : 'kg',
+        is_active: cell.isActive !== false,
+        updated_at: now,
+      }
+      if (cell.id) {
+        const { error: e } = await x.from('item_customer_type_prices').update(payload).eq('id', cell.id)
+        if (e) failed++
+        else saved++
+      } else {
+        const { error: e } = await x
+          .from('item_customer_type_prices')
+          .upsert(payload, { onConflict: 'item_id,customer_type' })
+        if (e) failed++
+        else saved++
+      }
+    }
+
+    setBusy(false)
+    if (failed) {
+      setError(true)
+      setMessage(`Saved ${saved}, removed ${removed}, failed ${failed}. Reload and retry failed cells.`)
     } else {
-      const res = await x.from('item_customer_type_prices').upsert(payload, { onConflict: 'item_id,customer_type' })
-      e = res.error
+      setMessage(`Saved ${saved} price(s)${removed ? `, removed ${removed}` : ''}.`)
     }
-    setBusy(false)
-    if (e) {
-      setError(true)
-      setMessage(e.message)
-      return
-    }
-    setOpen(false)
-    resetForm()
-    setError(false)
-    setMessage(editing ? 'Price list row updated.' : 'Price list row saved.')
     await load()
   }
 
-  const remove = async (id: string) => {
-    if (!window.confirm('Remove this price list row? Orders will fall back to the item default rate.')) return
-    setBusy(true)
-    const { error: e } = await db().from('item_customer_type_prices').delete().eq('id', id)
-    setBusy(false)
-    if (e) {
-      setError(true)
-      setMessage(e.message)
-      return
-    }
-    setError(false)
-    setMessage('Price list row removed.')
+  const discard = async () => {
+    if (dirtyCount && !window.confirm(`Discard ${dirtyCount} unsaved change(s)?`)) return
     await load()
   }
 
-  const displayPrice = (r: R) => {
-    const it = itemMap.get(s(r.item_id))
-    const def = n(it?.default_selling_rate)
-    if (s(r.price_mode) === 'percent') {
-      const pct = n(r.percent_of_default)
-      const computed = def ? +(def * (pct / 100)).toFixed(2) : null
-      return `${pct}% of default${computed != null ? ` → ₹${computed}/kg` : ' (set default rate on item)'}`
-    }
-    const basis = s(r.rate_basis) === 'pack' ? '/pack' : '/kg'
-    return `₹${n(r.unit_price)}${basis}`
+  const toggleType = (ct: string) => {
+    setVisibleTypes((prev) => {
+      if (prev.includes(ct)) {
+        if (prev.length === 1) return prev
+        return prev.filter((x) => x !== ct)
+      }
+      return [...prev, ct]
+    })
   }
 
   return (
-    <div className="console-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Selling price list by customer type</h2>
-          <span>
-            Set a <strong>fixed price</strong> or a <strong>% of the item default rate</strong> for each product and customer type.
-            Orders auto-fill rate from this list; you can still override on the order line.
-          </span>
-        </div>
-        <button className="primary-button" type="button" onClick={openCreate}>
-          + Add price
-        </button>
-      </div>
-
-      <div className="form-grid" style={{ marginBottom: 12 }}>
-        <Field label="Filter by product">
-          <select value={filterItem} onChange={(e) => setFilterItem(e.target.value)}>
-            <option value="">All products</option>
-            {items.map((it) => (
-              <option key={s(it.id)} value={s(it.id)}>
-                {s(it.item_code || it.business_code)} — {s(it.name)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Filter by customer type">
-          <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-            <option value="">All types</option>
-            {CUSTOMER_TYPES.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Customer type</th>
-              <th>Mode</th>
-              <th>Price</th>
-              <th>Default (item)</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => {
-              const it = itemMap.get(s(r.item_id))
-              return (
-                <tr key={s(r.id)}>
-                  <td>
-                    {s(it?.item_code || it?.business_code)} — {s(it?.name) || s(r.item_id)}
-                  </td>
-                  <td>{typeLabel(s(r.customer_type))}</td>
-                  <td>{s(r.price_mode) === 'percent' ? 'Percent' : 'Fixed'}</td>
-                  <td>{displayPrice(r)}</td>
-                  <td>{it?.default_selling_rate != null ? `₹${n(it.default_selling_rate)}/kg` : '—'}</td>
-                  <td>{r.is_active === false ? 'Inactive' : 'Active'}</td>
-                  <td>
-                    <button className="secondary-button" type="button" disabled={busy} onClick={() => openEdit(r)}>
-                      Edit
-                    </button>{' '}
-                    <button className="secondary-button" type="button" disabled={busy} onClick={() => void remove(s(r.id))}>
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-            {!filtered.length && (
-              <tr>
-                <td colSpan={7} className="table-message">
-                  No price list rows yet. Add a price for a product + customer type, or leave empty to use each item&apos;s default selling rate only.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {message && (
-        <p className={`form-status${error ? ' form-status-error' : ''}`} role="alert">
-          {message}
-        </p>
-      )}
-
-      {open && (
-        <div className="modal-backdrop">
-          <div className="modal-card purchase-modal">
-            <div className="modal-header">
-              <h3>{editing ? 'Edit price list row' : 'Add price list row'}</h3>
-              <button className="secondary-button" type="button" onClick={() => setOpen(false)}>
-                Close
-              </button>
-            </div>
-            <p className="muted">
-              When an order is taken for a customer of this type, the rate auto-fills from this row. Priority: this list → item default rate → blank
-              (manual entry).
-            </p>
-            <div className="form-grid">
-              <Field label="Product">
-                <select value={itemId} onChange={(e) => setItemId(e.target.value)} disabled={Boolean(editing)}>
-                  <option value="">Select product</option>
-                  {items.map((it) => (
-                    <option key={s(it.id)} value={s(it.id)}>
-                      {s(it.item_code || it.business_code)} — {s(it.name)}
-                      {it.default_selling_rate != null ? ` (default ₹${n(it.default_selling_rate)}/kg)` : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Customer type">
-                <select value={customerType} onChange={(e) => setCustomerType(e.target.value)} disabled={Boolean(editing)}>
-                  {CUSTOMER_TYPES.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Price mode" help="Fixed = exact amount. Percent = share of the item default rate (e.g. 90 = 10% discount).">
-                <select value={priceMode} onChange={(e) => setPriceMode(e.target.value as 'fixed' | 'percent')}>
-                  <option value="fixed">Fixed price</option>
-                  <option value="percent">Percent of default rate</option>
-                </select>
-              </Field>
-              {priceMode === 'fixed' ? (
-                <>
-                  <Field label="Rate basis" help="Pack only if the product has a pack size on Item Master.">
-                    <select value={rateBasis} onChange={(e) => setRateBasis(e.target.value as 'kg' | 'pack')}>
-                      <option value="kg">Per kg</option>
-                      <option value="pack">Per pack</option>
-                    </select>
-                  </Field>
-                  <Field label={rateBasis === 'pack' ? 'Price per pack (₹)' : 'Price per kg (₹)'}>
-                    <input type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
-                  </Field>
-                </>
-              ) : (
-                <Field label="Percent of default (%)" help="100 = same as default. 90 = 10% off. 110 = 10% premium.">
-                  <input type="number" min="0.01" step="0.01" value={percent} onChange={(e) => setPercent(e.target.value)} />
-                </Field>
-              )}
-              <Field label="Notes">
-                <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
-              </Field>
-              <Field label="Active">
-                <select value={isActive ? 'yes' : 'no'} onChange={(e) => setIsActive(e.target.value === 'yes')}>
-                  <option value="yes">Active</option>
-                  <option value="no">Inactive</option>
-                </select>
-              </Field>
-            </div>
-            {previewRate != null && (
-              <p className="muted">
-                Effective rate used on orders (per kg): <strong>₹{previewRate}</strong>
-                {priceMode === 'percent' && defaultRate ? ` (from default ₹${defaultRate}/kg × ${n(percent)}%)` : ''}
-              </p>
-            )}
-            <div className="purchase-actions">
-              <button className="secondary-button" type="button" onClick={() => setOpen(false)} disabled={busy}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={() => void save()} disabled={busy}>
-                {busy ? 'Saving…' : editing ? 'Save changes' : 'Save price'}
-              </button>
-            </div>
-            {message && open && (
-              <p className={`form-status${error ? ' form-status-error' : ''}`} role="alert">
-                {message}
-              </p>
-            )}
+    <div className="price-list-advanced">
+      <div className="console-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Price list</h2>
+            <span>
+              Matrix by product × customer type. Edit inline, bulk-fill, then <strong>Save all</strong>. Empty cell =
+              use item default rate.
+            </span>
+          </div>
+          <div className="purchase-actions">
+            <button className="secondary-button" type="button" disabled={busy} onClick={() => void discard()}>
+              Discard
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={busy || dirtyCount === 0}
+              onClick={() => void saveAll()}
+            >
+              {busy ? 'Saving…' : `Save all${dirtyCount ? ` (${dirtyCount})` : ''}`}
+            </button>
           </div>
         </div>
-      )}
+
+        <div className="pl-toolbar">
+          <input
+            className="search-input"
+            placeholder="Search product name or code…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <label className="pl-check">
+            <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
+            Missing prices
+          </label>
+          <label className="pl-check">
+            <input type="checkbox" checked={onlyDirty} onChange={(e) => setOnlyDirty(e.target.checked)} />
+            Unsaved only
+          </label>
+          <span className="muted pl-count">
+            {filteredItems.length} product{filteredItems.length === 1 ? '' : 's'}
+            {selectedItems.length ? ` · ${selectedItems.length} selected` : ''}
+          </span>
+        </div>
+
+        <div className="pl-types">
+          <span className="muted">Columns:</span>
+          {CUSTOMER_TYPES.map(([ct, label]) => (
+            <label key={ct} className="pl-check">
+              <input type="checkbox" checked={visibleTypes.includes(ct)} onChange={() => toggleType(ct)} />
+              {label}
+            </label>
+          ))}
+        </div>
+
+        <div className="pl-bulk">
+          <strong>Bulk fill</strong>
+          <select value={bulkCt} onChange={(e) => setBulkCt(e.target.value)}>
+            <option value="__all__">All visible types</option>
+            {CUSTOMER_TYPES.map(([ct, label]) => (
+              <option key={ct} value={ct}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <select value={bulkMode} onChange={(e) => setBulkMode(e.target.value as 'percent' | 'fixed')}>
+            <option value="percent">% of default</option>
+            <option value="fixed">Fixed ₹ / kg or pack</option>
+          </select>
+          <input
+            type="number"
+            min={bulkMode === 'percent' ? 0.01 : 0}
+            step="0.01"
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+            style={{ width: 100 }}
+          />
+          {bulkMode === 'fixed' && (
+            <select value={bulkBasis} onChange={(e) => setBulkBasis(e.target.value as 'kg' | 'pack')}>
+              <option value="kg">per kg</option>
+              <option value="pack">per pack</option>
+            </select>
+          )}
+          <button className="secondary-button" type="button" disabled={busy} onClick={applyBulk}>
+            Apply to {selectedItems.length ? 'selected' : 'visible'}
+          </button>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => fillFromDefault(100)}>
+            100% default
+          </button>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => fillFromDefault(90)}>
+            90%
+          </button>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => fillFromDefault(85)}>
+            85%
+          </button>
+        </div>
+
+        {message && (
+          <p className={`form-status${error ? ' form-status-error' : ''}`} role="alert">
+            {message}
+          </p>
+        )}
+
+        <div className="pl-matrix-wrap">
+          <table className="pl-matrix">
+            <thead>
+              <tr>
+                <th className="pl-sticky-col">
+                  <label className="pl-check">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredItems.length > 0 && filteredItems.every((i) => selectedItems.includes(s(i.id)))
+                      }
+                      onChange={selectAllVisible}
+                      aria-label="Select all visible"
+                    />
+                  </label>
+                </th>
+                <th className="pl-sticky-col pl-product">Product</th>
+                <th>Default ₹/kg</th>
+                <th>Pack</th>
+                {CUSTOMER_TYPES.filter(([ct]) => visibleTypes.includes(ct)).map(([ct, label]) => (
+                  <th key={ct}>{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredItems.map((it) => {
+                const id = s(it.id)
+                const selected = selectedItems.includes(id)
+                return (
+                  <tr key={id} className={selected ? 'pl-row-selected' : undefined}>
+                    <td className="pl-sticky-col">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelect(id)}
+                        aria-label={`Select ${s(it.name)}`}
+                      />
+                    </td>
+                    <td className="pl-sticky-col pl-product">
+                      <div className="pl-product-name">{s(it.name)}</div>
+                      <div className="muted pl-product-code">{s(it.item_code || it.business_code)}</div>
+                    </td>
+                    <td className="pl-default">{fmtMoney(it.default_selling_rate)}</td>
+                    <td className="muted">
+                      {s(it.selling_pack_label) ||
+                        (n(it.selling_pack_size_kg) > 0 ? `${it.selling_pack_size_kg} kg` : '—')}
+                    </td>
+                    {CUSTOMER_TYPES.filter(([ct]) => visibleTypes.includes(ct)).map(([ct]) => {
+                      const key = cellKey(id, ct)
+                      const cell = draft[key]
+                      const preview = computePreview(it, cell)
+                      const isDirty = Boolean(cell?.dirty)
+                      return (
+                        <td key={ct} className={`pl-cell${isDirty ? ' pl-cell-dirty' : ''}`}>
+                          <div className="pl-cell-inner">
+                            <div className="pl-cell-row">
+                              <select
+                                value={cell?.mode || ''}
+                                onChange={(e) => {
+                                  const mode = e.target.value as Mode
+                                  if (!mode) {
+                                    clearCell(id, ct)
+                                    return
+                                  }
+                                  setCell(id, ct, {
+                                    mode,
+                                    value:
+                                      mode === 'percent'
+                                        ? cell?.mode === 'percent'
+                                          ? cell.value
+                                          : '100'
+                                        : cell?.mode === 'fixed'
+                                          ? cell.value
+                                          : s(it.default_selling_rate || ''),
+                                    rateBasis: 'kg',
+                                    isActive: true,
+                                  })
+                                }
+                                aria-label="Price mode"
+                              >
+                                <option value="">Default</option>
+                                <option value="percent">%</option>
+                                <option value="fixed">₹</option>
+                              </select>
+                              {cell?.mode ? (
+                                <input
+                                  type="number"
+                                  min={cell.mode === 'percent' ? 0.01 : 0}
+                                  step="0.01"
+                                  value={cell.value}
+                                  onChange={(e) => setCell(id, ct, { value: e.target.value })}
+                                  aria-label="Price value"
+                                />
+                              ) : (
+                                <span className="pl-empty">—</span>
+                              )}
+                            </div>
+                            {cell?.mode === 'fixed' && n(it.selling_pack_size_kg) > 0 && (
+                              <select
+                                className="pl-basis"
+                                value={cell.rateBasis}
+                                onChange={(e) => setCell(id, ct, { rateBasis: e.target.value as 'kg' | 'pack' })}
+                              >
+                                <option value="kg">/kg</option>
+                                <option value="pack">/pack</option>
+                              </select>
+                            )}
+                            <div className="pl-preview muted">
+                              → ₹{fmtMoney(preview)}
+                              {cell?.mode === 'percent' ? '/kg' : cell?.rateBasis === 'pack' ? ' eff./kg' : '/kg'}
+                            </div>
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+              {!filteredItems.length && (
+                <tr>
+                  <td colSpan={4 + visibleTypes.length} className="table-message">
+                    No sellable products match. Activate products with Can be sold, or clear filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="muted" style={{ marginTop: 12 }}>
+          <strong>%</strong> = percent of item default selling rate (always per kg). <strong>₹</strong> = fixed price;
+          choose /kg or /pack when the product has a pack size. Orders resolve: price list → default rate → manual.
+        </p>
+      </div>
+
+      <style>{`
+        .price-list-advanced .pl-toolbar,
+        .price-list-advanced .pl-types,
+        .price-list-advanced .pl-bulk {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 14px;
+          align-items: center;
+          margin: 10px 0 12px;
+        }
+        .price-list-advanced .pl-check {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: var(--text);
+        }
+        .price-list-advanced .pl-count {
+          margin-left: auto;
+          font-size: 13px;
+        }
+        .price-list-advanced .pl-bulk {
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--accent-soft);
+        }
+        .price-list-advanced .pl-bulk strong {
+          margin-right: 4px;
+        }
+        .price-list-advanced .pl-bulk select,
+        .price-list-advanced .pl-bulk input {
+          padding: 6px 8px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+        }
+        .price-list-advanced .pl-matrix-wrap {
+          overflow: auto;
+          max-height: min(70vh, 720px);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+        }
+        .price-list-advanced .pl-matrix {
+          border-collapse: separate;
+          border-spacing: 0;
+          width: max-content;
+          min-width: 100%;
+          font-size: 13px;
+        }
+        .price-list-advanced .pl-matrix th,
+        .price-list-advanced .pl-matrix td {
+          border-bottom: 1px solid var(--border);
+          border-right: 1px solid var(--border);
+          padding: 8px 10px;
+          vertical-align: top;
+          background: var(--surface);
+        }
+        .price-list-advanced .pl-matrix thead th {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          background: var(--accent-soft);
+          font-weight: 700;
+          text-align: left;
+        }
+        .price-list-advanced .pl-sticky-col {
+          position: sticky;
+          left: 0;
+          z-index: 1;
+          background: var(--surface);
+        }
+        .price-list-advanced thead .pl-sticky-col {
+          z-index: 3;
+          background: var(--accent-soft);
+        }
+        .price-list-advanced .pl-product {
+          min-width: 180px;
+          left: 36px;
+        }
+        .price-list-advanced .pl-product-name {
+          font-weight: 600;
+        }
+        .price-list-advanced .pl-product-code {
+          font-size: 12px;
+        }
+        .price-list-advanced .pl-default {
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .price-list-advanced .pl-cell-dirty {
+          background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        }
+        .price-list-advanced .pl-row-selected td {
+          background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+        }
+        .price-list-advanced .pl-cell-inner {
+          min-width: 132px;
+        }
+        .price-list-advanced .pl-cell-row {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+        }
+        .price-list-advanced .pl-cell-row select {
+          width: 64px;
+          padding: 4px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+        }
+        .price-list-advanced .pl-cell-row input {
+          width: 72px;
+          padding: 4px 6px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+        }
+        .price-list-advanced .pl-basis {
+          margin-top: 4px;
+          width: 100%;
+          padding: 3px 4px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+          font-size: 12px;
+        }
+        .price-list-advanced .pl-preview {
+          margin-top: 4px;
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
+        }
+        .price-list-advanced .pl-empty {
+          color: var(--muted);
+          padding: 0 4px;
+        }
+        @media (max-width: 800px) {
+          .price-list-advanced .pl-product {
+            min-width: 140px;
+          }
+        }
+      `}</style>
     </div>
   )
 }
