@@ -102,6 +102,13 @@ export default function MasterItemManager({ requestedCreateType, onCreateRequest
     setBusy(false); if (e) { setError(e.message); return } setMessage('Restored successfully.'); await load()
   }
 
+  const unitOptions = units.map(u => ({
+    value: txt(u.id),
+    label: `${txt(u.code)}${u.name ? ` — ${txt(u.name)}` : ''}`,
+    code: txt(u.code),
+    name: txt(u.name),
+  }))
+
   return (
     <div className="master-manager">
       <div className="panel-heading"><div><h2>Items</h2><span>Master catalogue. Sellable items need pack type + size (kg).</span></div>
@@ -138,9 +145,9 @@ export default function MasterItemManager({ requestedCreateType, onCreateRequest
           <Field label="Category"><select value={categoryId} onChange={e => setCategoryId(e.target.value)}><option value="">—</option>{categories.map(c => <option key={txt(c.id)} value={txt(c.id)}>{txt(c.name)}</option>)}</select></Field>
           <Field label="Subcategory"><input value={subcategory} onChange={e => setSubcategory(e.target.value)} /></Field>
           <Field label="Product family"><input value={productFamily} onChange={e => setProductFamily(e.target.value)} /></Field>
-          <Field label="Base unit" required><SearchableSelect value={baseUnitId} options={units.map(u => ({ id: txt(u.id), code: txt(u.code), name: txt(u.name) }))} onChange={setBaseUnitId} placeholder="Select base unit" /></Field>
-          <Field label="Purchase unit"><SearchableSelect value={purchaseUnitId} options={units.map(u => ({ id: txt(u.id), code: txt(u.code), name: txt(u.name) }))} onChange={setPurchaseUnitId} placeholder="Select purchase unit" /></Field>
-          <Field label="Selling unit"><SearchableSelect value={sellingUnitId} options={units.map(u => ({ id: txt(u.id), code: txt(u.code), name: txt(u.name) }))} onChange={setSellingUnitId} placeholder="Select selling unit" /></Field>
+          <Field label="Base unit" required><SearchableSelect value={baseUnitId} options={unitOptions} onChange={setBaseUnitId} placeholder="Select base unit" /></Field>
+          <Field label="Purchase unit"><SearchableSelect value={purchaseUnitId} options={unitOptions} onChange={setPurchaseUnitId} placeholder="Select purchase unit" /></Field>
+          <Field label="Selling unit"><SearchableSelect value={sellingUnitId} options={unitOptions} onChange={setSellingUnitId} placeholder="Select selling unit" /></Field>
           <Field label="Minimum stock"><input type="number" min="0" step="0.001" value={minimumStock} onChange={e => setMinimumStock(e.target.value)} /></Field>
           <Field label="Selling pack type"><input value={packageType} onChange={e => setPackageType(e.target.value)} placeholder="e.g. pouch, jar, box" /></Field>
           <Field label="Pack size (kg)"><input type="number" min="0.001" step="0.001" value={packageSize} onChange={e => setPackageSize(e.target.value)} placeholder="e.g. 0.25" /></Field>
